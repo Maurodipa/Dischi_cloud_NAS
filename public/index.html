@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dischi Cloud</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#1a1a2e">
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(err => console.log('SW setup failed', err));
+      });
+    }
+  </script>
+</head>
+<body>
+  <div class="auth-container">
+    <div class="auth-card">
+      <h1>☁️ Dischi Cloud</h1>
+      <p class="subtitle">Il tuo cloud personale sicuro</p>
+      
+      <!-- Setup form (primo avvio) -->
+      <div id="setup-section" style="display:none;">
+        <div class="setup-banner">
+          <span>🎉</span>
+          <div>
+            <strong>Benvenuto!</strong>
+            Crea il tuo account per iniziare.
+          </div>
+        </div>
+        <form id="setup-form">
+          <div class="form-group">
+            <label for="setup-username">Nome utente</label>
+            <input type="text" id="setup-username" required autocomplete="username" 
+                   placeholder="Scegli un nome utente" minlength="3">
+          </div>
+          <div class="form-group">
+            <label for="setup-password">Password</label>
+            <input type="password" id="setup-password" required autocomplete="new-password" 
+                   placeholder="Scegli una password sicura" minlength="6">
+          </div>
+          <div class="form-group">
+            <label for="setup-password-confirm">Conferma password</label>
+            <input type="password" id="setup-password-confirm" required autocomplete="new-password" 
+                   placeholder="Ripeti la password" minlength="6">
+          </div>
+          <button type="submit" class="btn-primary">Crea Account</button>
+        </form>
+      </div>
+
+      <!-- Login form -->
+      <div id="login-section" style="display:none;">
+        <div id="biometric-login-container" style="display:none; text-align:center; margin-bottom: 20px;">
+          <button id="btn-biometric" class="btn-primary" style="width:100%; font-size: 1.1em; padding: 15px; display:flex; align-items:center; justify-content:center; gap: 10px;">
+            <svg style="width:24px;height:24px;" viewBox="0 0 24 24"><path fill="currentColor" d="M17,17.75C17,17.75 16.5,17.75 16.5,17.75C15.67,17.75 15,17.08 15,16.25V15.75C15,14.92 15.67,14.25 16.5,14.25C17.33,14.25 18,14.92 18,15.75V16.25C18,17.08 17.33,17.75 16.5,17.75M16.5,12.75C14.84,12.75 13.5,14.09 13.5,15.75V16.25C13.5,17.91 14.84,19.25 16.5,19.25C18.16,19.25 19.5,17.91 19.5,16.25V15.75C19.5,14.09 18.16,12.75 16.5,12.75M12.92,10.63C12.38,10.09 11.53,10.09 11,10.63L9,12.63C8.61,13.02 8.61,13.65 9,14.04C9.39,14.43 10.03,14.43 10.41,14.04L12.41,12.04C12.8,11.65 12.8,11.02 12.41,10.63M16.5,10.25C16.5,10.25 15,10.25 15,10.25C13.34,10.25 12,11.59 12,13.25V13.75C12,15.41 13.34,16.75 15,16.75C15,16.75 16.5,16.75 16.5,16.75Z" /></svg>
+            Accedi con Impronta / FaceID
+          </button>
+          
+          <div style="display:flex; align-items:center; margin-top:20px;">
+            <hr style="flex:1; border:none; border-top:1px solid #333;">
+            <span style="padding:0 10px; color:#888; font-size:0.9em;">oppure</span>
+            <hr style="flex:1; border:none; border-top:1px solid #333;">
+          </div>
+        </div>
+
+        <form id="login-form">
+          <div class="form-group">
+            <label for="username">Nome utente</label>
+            <input type="text" id="username" required autocomplete="username">
+          </div>
+          <div class="form-group">
+            <label for="password">Password</label>
+            <input type="password" id="password" required autocomplete="current-password">
+          </div>
+          <button type="submit" class="btn-secondary" style="width:100%; padding:12px;">Accedi con password</button>
+        </form>
+      </div>
+
+      <!-- Loading state -->
+      <div id="loading-section">
+        <p style="text-align:center; color:#888;">Caricamento...</p>
+      </div>
+    </div>
+  </div>
+
+
+
+  <script src="js/simplewebauthn.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/auth.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+      const setupSection = document.getElementById('setup-section');
+      const loginSection = document.getElementById('login-section');
+      const loadingSection = document.getElementById('loading-section');
+
+      try {
+        const status = await getAuthStatus();
+        
+        if (!status) {
+          loadingSection.innerHTML = '<p style="text-align:center; color:#e94560;">Errore di connessione al server.</p>';
+          return;
+        }
+
+        loadingSection.style.display = 'none';
+
+        if (status.isAuthenticated) {
+          window.location.href = '/dashboard.html';
+          return;
+        }
+
+        if (status.setupComplete) {
+          const refreshed = await refreshToken();
+          if (refreshed) {
+            window.location.href = '/dashboard.html';
+            return;
+          }
+          loginSection.style.display = 'block';
+        } else {
+          setupSection.style.display = 'block';
+        }
+      } catch (err) {
+        console.error('Errore controllo stato:', err);
+        loadingSection.innerHTML = '<p style="text-align:center; color:#e94560;">Errore di connessione al server.</p>';
+      }
+
+      // === Setup form handler ===
+      document.getElementById('setup-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const username = document.getElementById('setup-username').value.trim();
+        const password = document.getElementById('setup-password').value;
+        const confirmPassword = document.getElementById('setup-password-confirm').value;
+
+        if (password !== confirmPassword) {
+          showToast('Le password non coincidono', 'error');
+          return;
+        }
+
+        if (password.length < 6) {
+          showToast('La password deve avere almeno 6 caratteri', 'error');
+          return;
+        }
+
+        try {
+          const res = await fetch('/api/auth/setup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+          });
+
+          const data = await res.json();
+
+          if (res.ok) {
+            showToast('Account creato! Effettua il login.', 'success');
+            setupSection.style.display = 'none';
+            loginSection.style.display = 'block';
+            document.getElementById('username').value = username;
+            document.getElementById('password').focus();
+          } else {
+            showToast(data.error || 'Errore durante la creazione', 'error');
+          }
+        } catch (err) {
+          console.error('Setup error:', err);
+          showToast('Errore di connessione al server', 'error');
+        }
+      });
+
+      // === WebAuthn Logic ===
+      let webauthnSupported = false;
+      let startRegistration = null;
+      let startAuthentication = null;
+
+      if (window.SimpleWebAuthnBrowser && window.SimpleWebAuthnBrowser.browserSupportsWebAuthn()) {
+        webauthnSupported = true;
+        startRegistration = window.SimpleWebAuthnBrowser.startRegistration;
+        startAuthentication = window.SimpleWebAuthnBrowser.startAuthentication;
+      }
+
+      // Mostra il pulsante biometrico solo se il browser lo supporta E l'utente ha già registrato un'impronta
+      if (webauthnSupported) {
+        try {
+          const checkResp = await fetch('/api/auth/webauthn/has-passkey');
+          const checkData = await checkResp.json();
+          if (checkData.hasPasskey) {
+            const bioContainer = document.getElementById('biometric-login-container');
+            bioContainer.style.display = 'block';
+
+            const btnBiometric = document.getElementById('btn-biometric');
+            btnBiometric.addEventListener('click', async () => {
+              try {
+                const resp = await fetch('/api/auth/webauthn/login/generate-options', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({})
+                });
+                const options = await resp.json();
+                
+                if (options.error) {
+                  return showToast(options.error, 'error');
+                }
+
+                const asseResp = await startAuthentication(options);
+
+                const verificationResp = await fetch('/api/auth/webauthn/login/verify', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(asseResp),
+                });
+
+                const verificationJSON = await verificationResp.json();
+
+                if (verificationJSON && verificationJSON.verified) {
+                  // Il server ha già settato il cookie refreshToken.
+                  // Salva l'accessToken nella variabile globale di auth.js
+                  accessToken = verificationJSON.accessToken;
+                  startTokenRefresh();
+                  window.location.href = '/dashboard.html';
+                } else {
+                  showToast('Accesso biometrico fallito.', 'error');
+                }
+              } catch (error) {
+                console.error('WebAuthn login error:', error);
+                if (error.name !== 'NotAllowedError') {
+                  showToast('Errore durante l\'accesso biometrico.', 'error');
+                }
+              }
+            });
+          }
+        } catch (e) {
+          console.error('Passkey check failed:', e);
+        }
+      }
+
+      async function offerBiometricRegistration() {
+        if (!webauthnSupported) { console.log('WebAuthn non supportato'); return; }
+        
+        // Controlla se l'utente ha già un'impronta registrata
+        try {
+          const checkResp = await fetch('/api/auth/webauthn/has-passkey');
+          const checkData = await checkResp.json();
+          console.log('has-passkey: ' + JSON.stringify(checkData));
+          if (checkData.hasPasskey) { console.log('Impronta già registrata, skip'); return; }
+        } catch (e) { console.error('has-passkey errore: ' + e.message); return; }
+        
+        try {
+          console.log('Richiedo opzioni registrazione...');
+          const resp = await fetch('/api/auth/webauthn/register/generate-options', {
+            headers: { 'Authorization': `Bearer ${accessToken}` }
+          });
+          console.log('generate-options status: ' + resp.status);
+          if (!resp.ok) { console.error('generate-options FALLITO'); return; }
+          const options = await resp.json();
+          console.log('Opzioni ricevute OK');
+          if (options.error) { console.error('Opzioni errore: ' + options.error); return; }
+
+          if (confirm('Vuoi abilitare l\'accesso rapido con impronta digitale/FaceID su questo dispositivo?')) {
+            console.log('Utente ha accettato, avvio startRegistration...');
+            let attResp;
+            try {
+              attResp = await startRegistration(options);
+            } catch (regErr) {
+              console.error('startRegistration ERRORE: ' + regErr.name + ' - ' + regErr.message);
+              if (regErr.name !== 'NotAllowedError') {
+                showToast('Errore registrazione: ' + regErr.message, 'error');
+              }
+              return;
+            }
+            console.log('startRegistration OK! Invio verifica al server...');
+            
+            const verificationResp = await fetch('/api/auth/webauthn/register/verify', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${accessToken}`
+              },
+              body: JSON.stringify(attResp),
+            });
+            
+            console.log('verify status: ' + verificationResp.status);
+            const verificationJSON = await verificationResp.json();
+            console.log('verify risposta: ' + JSON.stringify(verificationJSON));
+            if (verificationJSON && verificationJSON.verified) {
+              showToast('Accesso con impronta configurato con successo!', 'success');
+            } else {
+              showToast('Errore: ' + (verificationJSON.error || 'sconosciuto'), 'error');
+            }
+          } else {
+            console.log('Utente ha rifiutato');
+          }
+        } catch (error) {
+          console.error('ERRORE GENERALE: ' + error.message);
+          showToast('Impossibile configurare l\'impronta.', 'error');
+        }
+      }
+
+      // === Login form handler ===
+      document.getElementById('login-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const user = document.getElementById('username').value.trim();
+        const pass = document.getElementById('password').value;
+
+        if (!user || !pass) {
+          showToast('Inserisci nome utente e password', 'error');
+          return;
+        }
+
+        console.log('Login in corso...');
+        const success = await login(user, pass);
+        console.log('Login result: ' + success + ', accessToken: ' + (accessToken ? 'OK' : 'NULL'));
+        if (success) {
+          console.log('Avvio offerBiometricRegistration...');
+          await offerBiometricRegistration();
+          window.location.href = '/dashboard.html';
+        } else {
+          showToast('Credenziali non valide', 'error');
+        }
+      });
+    });
+  </script>
+</body>
+</html>

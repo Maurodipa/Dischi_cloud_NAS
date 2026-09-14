@@ -1,0 +1,17 @@
+{
+  "name": "Dischi Cloud",
+  "short_name": "Dischi",
+  "description": "Il tuo cloud personale sicuro",
+  "start_url": "/index.html",
+  "display": "standalone",
+  "background_color": "#1a1a2e",
+  "theme_color": "#1a1a2e",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

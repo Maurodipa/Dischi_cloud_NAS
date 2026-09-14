@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - Dischi Cloud</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#1a1a2e">
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(err => console.log('SW setup failed', err));
+      });
+    }
+  </script>
+</head>
+<body>
+  <div class="dashboard">
+    <header class="top-bar">
+      <div class="logo" style="display: flex; align-items: center; gap: 10px;">
+        <button id="btn-toggle-sidebar" class="btn-icon mobile-only">☰</button>
+        <h2>☁️ Dischi Cloud</h2>
+      </div>
+      <div class="user-controls" style="display: flex; align-items: center; gap: 15px;">
+        <button id="btn-add-passkey" title="Abilita l'accesso con impronta/FaceID su questo dispositivo" style="background: none; border: 1px solid var(--border-color); color: var(--text-color); cursor: pointer; padding: 4px 10px; border-radius: 20px; font-size: 0.9em;">📱 Aggiungi Impronta</button>
+        <span id="current-username" title="Clicca per cambiare password" style="font-weight: bold; color: #ffffff; background: rgba(255,255,255,0.1); padding: 4px 10px; border-radius: 20px; cursor: pointer;"></span>
+        <span id="sync-status">🟢 Sincronizzato</span>
+        <button id="btn-logout">Esci</button>
+      </div>
+    </header>
+    
+    <div class="main-content">
+      <aside class="sidebar">
+        <div class="action-buttons">
+          <button id="btn-upload-file">📄 Carica File</button>
+          <button id="btn-upload-folder">📁 Carica Cartella</button>
+          <button id="btn-new-folder">➕ Nuova Cartella</button>
+          <button id="btn-refresh">🔄 Aggiorna</button>
+          <button id="btn-admin" style="display: none;">👥 Gestione Utenti</button>
+        </div>
+        
+        <div class="disk-usage">
+          <p id="disk-usage-text">Spazio utilizzato: ...</p>
+          <div class="progress-container" style="display: block;">
+            <div class="progress-bar" id="disk-usage-bar" style="width: 0%; background-color: var(--accent)"></div>
+          </div>
+        </div>
+      </aside>
+      
+      <main class="file-area">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+          <div class="breadcrumb" id="breadcrumb" style="margin-bottom: 0;">
+            <!-- Populated by JS -->
+          </div>
+          <input type="text" id="search-input" placeholder="Cerca file per nome..." style="max-width: 300px; padding: 0.5rem;" />
+        </div>
+        
+        <div class="upload-zone" id="upload-zone">
+          <p>Trascina qui i tuoi file per caricarli</p>
+        </div>
+        
+        <div class="progress-container" id="progress-container" style="display: none;">
+          <div class="progress-bar" id="progress-bar"></div>
+        </div>
+        
+        <table class="file-list">
+          <thead>
+            <tr>
+              <th data-sort="name" style="cursor: pointer;">Nome <span class="sort-icon"></span></th>
+              <th data-sort="size" style="cursor: pointer;">Dimensione <span class="sort-icon"></span></th>
+              <th data-sort="date" style="cursor: pointer;">Modificato <span class="sort-icon"></span></th>
+              <th>Azioni</th>
+            </tr>
+          </thead>
+          <tbody id="file-list-body">
+            <!-- Populated by JS -->
+          </tbody>
+        </table>
+        
+        <div id="empty-state" style="display: none; text-align: center; margin-top: 2rem; color: var(--text-muted);">
+          Nessun file presente in questa cartella.
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Hidden inputs -->
+  <input type="file" id="file-upload-input" multiple style="display: none;">
+  <input type="file" id="folder-upload-input" webkitdirectory directory multiple style="display: none;">
+
+  <!-- Modal -->
+  <div class="modal-overlay" id="modal-overlay">
+    <div class="modal-content">
+      <h3 id="modal-title">Titolo</h3>
+      <div id="modal-body" style="margin-top: 1rem;">
+        Contenuto modale
+      </div>
+      <div class="modal-actions">
+        <button class="btn-outline" id="btn-cancel-modal">Annulla</button>
+        <button id="btn-confirm-modal">Conferma</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Admin Modal -->
+  <div id="admin-modal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 500px;">
+      <h2>👥 Gestione Utenti</h2>
+      
+      <div style="margin-bottom: 1.5rem; background: var(--bg-color); padding: 1rem; border-radius: 8px;">
+        <h3>Nuovo Utente</h3>
+        <input type="text" id="new-user-name" placeholder="Nome utente" class="modal-input" style="margin-bottom: 0.5rem;" />
+        <input type="password" id="new-user-pass" placeholder="Password" class="modal-input" style="margin-bottom: 1rem;" />
+        <button id="btn-create-user" class="btn-primary" style="width: 100%;">Crea Utente</button>
+      </div>
+
+      <h3>Utenti Esistenti</h3>
+      <ul id="users-list" style="list-style: none; padding: 0; margin-bottom: 1.5rem; max-height: 200px; overflow-y: auto;">
+        <!-- Filled by JS -->
+      </ul>
+
+      <div class="modal-actions">
+        <button id="btn-close-admin-modal">Chiudi</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Change Password Modal -->
+  <div id="password-modal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 400px;">
+      <h2>🔑 Cambia Password</h2>
+      <div style="margin-top: 1rem;">
+        <input type="password" id="old-password-input" placeholder="Password attuale" class="modal-input" style="margin-bottom: 0.8rem; width: 100%;" />
+        <input type="password" id="new-password-input" placeholder="Nuova password" class="modal-input" style="margin-bottom: 1.5rem; width: 100%;" />
+      </div>
+      <div class="modal-actions">
+        <button id="btn-cancel-password-modal" class="btn-outline">Annulla</button>
+        <button id="btn-save-password" class="btn-primary">Salva</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Auth and API logic -->
+  <script src="js/utils.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/simplewebauthn.js"></script>
+  <script src="js/fileManager.js"></script>
+
+  <!-- Upload Manager Floating Panel -->
+  <div id="upload-manager" class="upload-manager" style="display: none;">
+    <div class="upload-manager-header">
+      <h4 id="upload-manager-title">Caricamento in corso...</h4>
+      <div class="upload-manager-actions">
+        <button id="btn-toggle-upload-manager" class="btn-icon">➖</button>
+        <button id="btn-close-upload-manager" class="btn-icon">✖</button>
+      </div>
+    </div>
+    <div class="upload-manager-body" id="upload-manager-body">
+      <!-- File items will go here -->
+    </div>
+  </div>
+</body>
+</html>

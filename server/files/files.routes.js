@@ -1,0 +1,146 @@
+const express = require('express');
+const router = express.Router();
+const path = require('path');
+const fs = require('fs-extra');
+const archiver = require('archiver');
+const filesService = require('./files.service');
+const { upload } = require('./upload.middleware');
+const { requireAuth } = require('../auth/auth.middleware.js');
+const logger = require('../utils/logger.js');
+
+router.use(requireAuth);
+
+router.get('/list', async (req, res) => {
+  try {
+    const dirPath = req.query.path || '/';
+    const files = await filesService.listFiles(req.user.username, dirPath);
+    res.json({ files });
+  } catch (err) {
+    logger.error('Errore nel listare i file:', err);
+    res.status(400).json({ error: 'Impossibile leggere la cartella', details: err.message });
+  }
+});
+
+router.get('/download', async (req, res) => {
+  try {
+    const filePath = req.query.path;
+    if (!filePath) {
+      return res.status(400).json({ error: 'Percorso del file mancante' });
+    }
+    const absolutePath = filesService.getAbsolutePath(req.user.username, filePath);
+    const stat = await fs.stat(absolutePath);
+    
+    if (stat.isDirectory()) {
+      return res.status(400).json({ error: 'Il percorso è una cartella, usa download-zip' });
+    }
+
+    res.download(absolutePath, path.basename(absolutePath), (err) => {
+      if (err) {
+        logger.error('Errore durante il download:', err);
+      }
+    });
+  } catch (err) {
+    logger.error('Errore nel download del file:', err);
+    res.status(404).json({ error: 'File non trovato o errore nel percorso', details: err.message });
+  }
+});
+
+router.get('/download-zip', async (req, res) => {
+  try {
+    const dirPath = req.query.path || '/';
+    const absolutePath = filesService.getAbsolutePath(req.user.username, dirPath);
+    const stat = await fs.stat(absolutePath);
+
+    if (!stat.isDirectory()) {
+      return res.status(400).json({ error: 'Il percorso non è una cartella' });
+    }
+
+    const archive = archiver('zip', { zlib: { level: 9 } });
+    const zipName = path.basename(absolutePath) || 'download';
+    
+    res.attachment(`${zipName}.zip`);
+    archive.pipe(res);
+    archive.directory(absolutePath, false);
+    
+    archive.on('error', (err) => {
+      logger.error('Errore nella creazione dello ZIP:', err);
+      res.status(500).json({ error: 'Errore interno del server durante l\'archiviazione' });
+    });
+    
+    await archive.finalize();
+  } catch (err) {
+    logger.error('Errore nel download dello ZIP:', err);
+    res.status(404).json({ error: 'Cartella non trovata', details: err.message });
+  }
+});
+
+router.post('/upload', upload.array('files'), (req, res) => {
+  try {
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: 'Nessun file caricato' });
+    }
+    const uploaded = req.files.map(f => ({
+      name: f.filename,
+      size: f.size
+    }));
+    res.json({ message: 'File caricati con successo', files: uploaded });
+  } catch (err) {
+    logger.error('Errore durante l\'upload:', err);
+    res.status(500).json({ error: 'Errore durante il caricamento' });
+  }
+});
+
+router.post('/mkdir', async (req, res) => {
+  try {
+    const dirPath = req.body.path;
+    if (!dirPath) {
+      return res.status(400).json({ error: 'Percorso mancante' });
+    }
+    await filesService.createDirectory(req.user.username, dirPath);
+    res.json({ message: 'Cartella creata con successo' });
+  } catch (err) {
+    logger.error('Errore nella creazione della cartella:', err);
+    res.status(400).json({ error: 'Impossibile creare la cartella', details: err.message });
+  }
+});
+
+router.post('/delete', async (req, res) => {
+  try {
+    // frontend sends path in body for delete
+    const itemPath = req.body.path || req.query.path;
+    if (!itemPath) {
+      return res.status(400).json({ error: 'Percorso mancante' });
+    }
+    await filesService.deleteItem(req.user.username, itemPath);
+    res.json({ message: 'Elemento eliminato con successo' });
+  } catch (err) {
+    logger.error('Errore durante l\'eliminazione:', err);
+    res.status(400).json({ error: 'Impossibile eliminare l\'elemento', details: err.message });
+  }
+});
+
+router.post('/rename', async (req, res) => {
+  try {
+    const { oldPath, newPath } = req.body;
+    if (!oldPath || !newPath) {
+      return res.status(400).json({ error: 'Percorsi vecchio e nuovo necessari' });
+    }
+    await filesService.renameItem(req.user.username, oldPath, newPath);
+    res.json({ message: 'Rinominato con successo' });
+  } catch (err) {
+    logger.error('Errore durante la rinomina:', err);
+    res.status(400).json({ error: 'Impossibile rinominare', details: err.message });
+  }
+});
+
+router.get('/disk-usage', async (req, res) => {
+  try {
+    const usage = await filesService.getDiskUsage(req.user.username);
+    res.json(usage);
+  } catch (err) {
+    logger.error('Errore nel calcolo dell\'utilizzo disco:', err);
+    res.status(500).json({ error: 'Impossibile calcolare lo spazio' });
+  }
+});
+
+module.exports = router;

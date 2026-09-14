@@ -1,0 +1,31 @@
+{
+  "name": "dischi-cloud",
+  "version": "1.0.0",
+  "description": "Sistema di backup cloud casalingo sicuro",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "setup": "node server/index.js --setup"
+  },
+  "dependencies": {
+    "@simplewebauthn/browser": "^14.0.0",
+    "@simplewebauthn/server": "^14.0.1",
+    "archiver": "^7.0.0",
+    "bcryptjs": "^2.4.3",
+    "chokidar": "^4.0.0",
+    "cookie-parser": "^1.4.6",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "express-rate-limit": "^7.4.0",
+    "fs-extra": "^11.2.0",
+    "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^1.4.5-lts.1",
+    "selfsigned": "^2.4.1",
+    "uuid": "^10.0.0",
+    "webdav-server": "^2.6.2",
+    "winston": "^3.14.0"
+  }
+}
