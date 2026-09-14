@@ -11,6 +11,8 @@
   "dependencies": {
     "@simplewebauthn/browser": "^14.0.0",
     "@simplewebauthn/server": "^14.0.1",
+    "@tus/file-store": "^2.1.1",
+    "@tus/server": "^2.4.5",
     "archiver": "^7.0.0",
     "bcryptjs": "^2.4.3",
     "chokidar": "^4.0.0",

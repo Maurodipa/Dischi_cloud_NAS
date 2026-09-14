@@ -412,7 +412,7 @@ async function processUploadQueue() {
   const statusEl = document.getElementById(`${itemId}-status`);
   const progressEl = document.getElementById(`${itemId}-progress`);
   
-  if (statusEl) statusEl.textContent = '0%';
+  if (statusEl) statusEl.textContent = 'Inizializzazione...';
   
   // Extract relative path if uploading folder
   let uploadPath = targetPath;
@@ -424,87 +424,73 @@ async function processUploadQueue() {
     }
   }
 
-  const formData = new FormData();
-  formData.append('path', uploadPath);
-  formData.append('files', file);
-
-  const xhr = new XMLHttpRequest();
-  xhr.open('POST', '/api/files/upload', true);
-  // Timeout di 1 ora per file molto grandi
-  xhr.timeout = 3600000;
-  
-  if (accessToken) {
-    xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`);
+  if (uploadPath && uploadPath !== '/' && uploadPath.endsWith('/')) {
+    uploadPath = uploadPath.slice(0, -1);
   }
 
-  xhr.upload.onprogress = (e) => {
-    if (e.lengthComputable && progressEl) {
-      const percentComplete = Math.round((e.loaded / e.total) * 100);
-      progressEl.style.width = percentComplete + '%';
-      if (statusEl) statusEl.textContent = percentComplete + '%';
-    } else if (!e.lengthComputable && statusEl) {
-      statusEl.textContent = 'Invio in corso...';
+  if (!window.tus) {
+    if (statusEl) {
+      statusEl.textContent = 'Errore libreria TUS non caricata';
+      statusEl.style.color = '#ff4444';
     }
-  };
+    if (progressEl) progressEl.style.background = '#ff4444';
+    isUploading = false;
+    return processUploadQueue();
+  }
 
-  xhr.onload = () => {
-    if (xhr.status === 200 || xhr.status === 201) {
+  // TUS chunk size: 25 MB
+  const chunkSize = 25 * 1024 * 1024;
+  
+  const options = {
+    endpoint: '/api/tus/',
+    retryDelays: [0, 3000, 5000, 10000, 20000],
+    chunkSize: chunkSize,
+    metadata: {
+      filename: file.name,
+      filetype: file.type || 'application/octet-stream',
+      relativePath: uploadPath || '/'
+    },
+    headers: {},
+    onError: function(error) {
+      console.error('TUS Upload failed:', error);
       if (statusEl) {
-        statusEl.textContent = 'Completato';
-        statusEl.style.color = '#4caf50'; // Verde brillante per leggibilità
-      }
-      if (progressEl) progressEl.style.background = '#4caf50';
-    } else {
-      if (statusEl) {
-        statusEl.textContent = 'Errore';
+        statusEl.textContent = 'Errore Rete';
         statusEl.style.color = '#ff4444';
       }
       if (progressEl) progressEl.style.background = '#ff4444';
+      isUploading = false;
+      processUploadQueue();
+    },
+    onProgress: function(bytesUploaded, bytesTotal) {
+      if (progressEl) {
+        const percentComplete = Math.round((bytesUploaded / bytesTotal) * 100);
+        progressEl.style.width = percentComplete + '%';
+        if (statusEl) statusEl.textContent = percentComplete + '%';
+      }
+    },
+    onSuccess: function() {
+      if (statusEl) {
+        statusEl.textContent = 'Completato';
+        statusEl.style.color = '#4caf50';
+      }
+      if (progressEl) progressEl.style.background = '#4caf50';
+      
+      // Refresh UI if this was uploaded to current dir
+      if (uploadPath === currentPath || uploadPath.startsWith(currentPath)) {
+        loadFiles(currentPath);
+      }
+      
+      isUploading = false;
+      processUploadQueue();
     }
-    
-    // Refresh UI if this was uploaded to current dir
-    if (uploadPath === currentPath || uploadPath.startsWith(currentPath)) {
-      loadFiles(currentPath);
-    }
-    
-    isUploading = false;
-    processUploadQueue();
   };
 
-  xhr.onerror = () => {
-    if (statusEl) {
-      statusEl.textContent = 'Errore Rete';
-      statusEl.style.color = '#ff4444';
-    }
-    if (progressEl) progressEl.style.background = '#ff4444';
-    
-    isUploading = false;
-    processUploadQueue();
-  };
-
-  xhr.ontimeout = () => {
-    if (statusEl) {
-      statusEl.textContent = 'Timeout Server';
-      statusEl.style.color = '#ff4444';
-    }
-    if (progressEl) progressEl.style.background = '#ff4444';
-    
-    isUploading = false;
-    processUploadQueue();
-  };
-
-  try {
-    xhr.send(formData);
-  } catch (err) {
-    // Catch immediate browser errors (e.g., file too large for FormData)
-    if (statusEl) {
-      statusEl.textContent = 'Errore Browser (File troppo grande?)';
-      statusEl.style.color = '#ff4444';
-    }
-    if (progressEl) progressEl.style.background = '#ff4444';
-    isUploading = false;
-    processUploadQueue();
+  if (typeof accessToken !== 'undefined' && accessToken) {
+    options.headers['Authorization'] = `Bearer ${accessToken}`;
   }
+
+  const upload = new tus.Upload(file, options);
+  upload.start();
 }
 
 // Bind upload manager buttons

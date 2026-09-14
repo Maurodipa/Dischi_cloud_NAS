@@ -54,6 +54,11 @@ app.use('/api/auth/webauthn', webauthnRoutes);
 app.use('/api/files/upload', uploadLimiter);
 app.use('/api/files', filesRoutes);
 
+// TUS Protocol routes for chunked uploads
+const tusServer = require('./files/tus.service.js');
+app.all('/api/tus/*', tusServer.handle.bind(tusServer));
+app.all('/api/tus', tusServer.handle.bind(tusServer));
+
 // Sync status endpoint
 app.get('/api/sync/status', (req, res) => {
     res.json(getSyncStatus());
