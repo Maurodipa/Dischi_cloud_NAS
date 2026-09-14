@@ -48,7 +48,7 @@ const config = {
     // SCREAMING_SNAKE_CASE (original)
     PRIMARY_DISK: process.env.PRIMARY_DISK || defaultPrimary,
     BACKUP_DISK: process.env.BACKUP_DISK || defaultBackup,
-    HTTPS_PORT: parseInt(process.env.HTTPS_PORT, 10) || 443,
+    HTTPS_PORT: parseInt(process.env.HTTPS_PORT, 10) || 3443,
     WEBDAV_PORT: parseInt(process.env.WEBDAV_PORT, 10) || 1900,
     JWT_SECRET: generateAndSaveJwtSecret(),
     ACCESS_TOKEN_EXPIRY: parseInt(process.env.ACCESS_TOKEN_EXPIRY, 10) || 15,

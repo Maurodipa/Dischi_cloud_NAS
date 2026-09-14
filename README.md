@@ -64,7 +64,7 @@ notepad .env
 |:---|:---|:---|:---|
 | `PRIMARY_DISK` | `/mnt/disk1/CloudData` | `C:/CloudData` | Percorso disco primario (HDD USB) |
 | `BACKUP_DISK` | `/mnt/disk2/CloudBackup` | `C:/CloudBackup` | Percorso disco backup (HDD USB) |
-| `HTTPS_PORT` | `443` | `443` | Porta HTTPS (web UI) |
+| `HTTPS_PORT` | `3443` | `3443` | Porta HTTPS (web UI) |
 | `WEBDAV_PORT` | `1900` | `1900` | Porta WebDAV (disco di rete) |
 | `MAX_UPLOAD_SIZE` | `1099511627776` | `1099511627776` | Limite upload in bytes (1 TB) |
 
@@ -83,7 +83,7 @@ Scegli **una** delle due modalità (il server rimarrà attivo nel terminale; per
 
 ### 5. Setup iniziale
 
-1. Apri il browser su `https://localhost` (o `https://localhost:443`)
+1. Apri il browser su `https://192.168.3.240:3443` (o `https://raspberrypi.local:3443`)
 2. Al primo avvio verrà creata la configurazione iniziale per l'account **Admin** (`maurodipa`)
 3. Configura l'impronta digitale/FaceID se richiesto
 4. Dalla Dashboard potrai accedere alla **Gestione Utenti** per creare ulteriori utenti! 🎉
