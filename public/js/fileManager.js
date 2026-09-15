@@ -441,10 +441,16 @@ async function processUploadQueue() {
   // TUS chunk size: 10 MB (più leggero per il Raspberry Pi 3 e i suoi dischi USB lenti)
   const chunkSize = 10 * 1024 * 1024;
 
-  // Assicurati che il token sia valido (se è scaduto, lo rinnova prima di iniziare l'upload)
+  // STEP 1: Assicurati che il token sia valido PRIMA di creare l'upload.
+  // ensureValidToken() è async e viene correttamente awaited qui nel contesto di processUploadQueue.
   if (typeof ensureValidToken === 'function') {
     await ensureValidToken();
   }
+
+  // STEP 2: Leggi il token fresco e mettilo negli header statici dell'upload.
+  // tus-js-client non supporta async in onBeforeRequest nel browser (non viene awaited),
+  // quindi il token DEVE essere impostato qui, non nell'hook.
+  const authHeaders = typeof getAuthHeaders === 'function' ? getAuthHeaders() : {};
 
   const options = {
     endpoint: '/api/tus/',
@@ -455,21 +461,17 @@ async function processUploadQueue() {
       filetype: file.type || 'application/octet-stream',
       relativePath: uploadPath || '/'
     },
-    // Nota: l'autenticazione è gestita esplicitamente in onBeforeRequest per evitare duplicazioni di header
-    onBeforeRequest: async function(req) {
+    headers: authHeaders,
+    onBeforeRequest: function(req) {
+      // Imposta withCredentials per inviare i cookie di sessione come backup
       const xhr = req.getUnderlyingObject();
       if (xhr && typeof xhr.withCredentials !== 'undefined') {
-        xhr.withCredentials = true; // Necessario per l'autenticazione tramite cookie di fallback
+        xhr.withCredentials = true;
       }
-      
-      // Controllo vitale: rinnova il token prima di inviare OGNI singolo chunk
-      // Se un file da 600MB impiega 20 minuti, il token scadrà a metà. Questo lo salva!
-      if (typeof ensureValidToken === 'function') {
-         await ensureValidToken();
-      }
-      const freshHeaders = typeof getAuthHeaders === 'function' ? getAuthHeaders() : {};
-      if (freshHeaders.Authorization) {
-         req.setHeader('Authorization', freshHeaders.Authorization);
+      // Aggiorna l'header sincrono con il token attuale (potrebbe essere stato rinnovato nel frattempo)
+      const currentHeaders = typeof getAuthHeaders === 'function' ? getAuthHeaders() : {};
+      if (currentHeaders.Authorization) {
+        req.setHeader('Authorization', currentHeaders.Authorization);
       }
     },
     onError: function(error) {
@@ -499,11 +501,11 @@ async function processUploadQueue() {
         statusEl.style.color = '#4caf50';
       }
       if (progressEl) {
-        progressEl.style.width = '100%'; // Forza il riempimento della barra
+        progressEl.style.width = '100%';
         progressEl.style.background = '#4caf50';
       }
       
-      // Refresh UI if this was uploaded to current dir
+      // Aggiorna UI se siamo nella cartella di destinazione
       if (uploadPath === currentPath || uploadPath.startsWith(currentPath)) {
         loadFiles(currentPath);
       }
