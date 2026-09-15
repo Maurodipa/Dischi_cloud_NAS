@@ -10,30 +10,89 @@ const jwt = require('jsonwebtoken');
 const tusTmpDir = path.join(config.primaryDisk, '.tus_tmp');
 fse.ensureDirSync(tusTmpDir);
 
+/**
+ * Estrae e verifica il JWT direttamente da req, senza dipendere da req.user.
+ * Prova: 1) Authorization header (Bearer), 2) cookie access_token, 3) cookie raw, 4) query param.
+ * Necessario perché @tus/server gestisce il routing internamente e
+ * l'integrazione con i middleware Express non è affidabile al 100%.
+ */
+function extractAndVerifyToken(req) {
+    let token = null;
+
+    // 1. Authorization header
+    if (req.headers && req.headers.authorization) {
+        const auth = req.headers.authorization;
+        if (auth.startsWith('Bearer ')) {
+            token = auth.slice(7).trim();
+        }
+    }
+
+    // 2. Cookie parsato da cookie-parser
+    if (!token && req.cookies) {
+        token = req.cookies.access_token || req.cookies.accessToken || null;
+    }
+
+    // 3. Cookie raw (se cookie-parser non ha processato la richiesta)
+    if (!token && req.headers && req.headers.cookie) {
+        for (const part of req.headers.cookie.split(';')) {
+            const idx = part.indexOf('=');
+            if (idx < 0) continue;
+            const name = part.slice(0, idx).trim();
+            const val = part.slice(idx + 1).trim();
+            if (name === 'access_token' || name === 'accessToken') {
+                token = decodeURIComponent(val);
+                break;
+            }
+        }
+    }
+
+    // 4. Query string (fallback)
+    if (!token && req.query && req.query.token) {
+        token = req.query.token;
+    }
+
+    if (!token) {
+        logger.warn(`[TUS] Nessun token trovato. Headers: ${Object.keys(req.headers || {}).join(', ')}`);
+        return null;
+    }
+
+    try {
+        return jwt.verify(token, config.jwtSecret);
+    } catch (err) {
+        logger.warn(`[TUS] Token non valido: ${err.message}`);
+        return null;
+    }
+}
+
 const tusServer = new Server({
     path: '/api/tus',
     datastore: new FileStore({ directory: tusTmpDir }),
     namingFunction: (req) => {
-        // Generate a random name for the temp file
         return require('crypto').randomBytes(16).toString('hex');
     },
     onUploadCreate: async (req, res, upload) => {
         try {
-            if (!req.user) {
-                throw { status_code: 401, body: 'Unauthorized: req.user is missing' };
+            // Usa req.user se già impostato da Express, altrimenti verifica il token manualmente
+            const user = req.user || extractAndVerifyToken(req);
+
+            if (!user) {
+                logger.warn(`[TUS] Accesso non autorizzato. IP: ${req.ip}`);
+                throw { status_code: 401, body: 'Unauthorized' };
             }
 
             upload.metadata = upload.metadata || {};
-            upload.metadata.username = req.user.username || req.user.id; // Fallback to id se username non presente
+            upload.metadata.username = user.username || user.id;
 
             if (!upload.metadata.filename) {
                 throw { status_code: 400, body: 'filename is required in metadata' };
             }
 
+            logger.info(`[TUS] Upload avviato: ${upload.metadata.filename} per utente ${upload.metadata.username}`);
             return res;
         } catch (err) {
-            logger.error(`TUS onUploadCreate error: ${err.message || err.body || err}`);
-            throw err;
+            if (err.status_code) throw err;
+            logger.error(`[TUS] Errore inatteso in onUploadCreate: ${err.message}`);
+            throw { status_code: 500, body: 'Internal Server Error' };
         }
     }
 });
@@ -43,30 +102,34 @@ tusServer.on(EVENTS.POST_FINISH, async (req, res, upload) => {
         const username = upload.metadata.username;
         const filename = upload.metadata.filename;
         const relativePath = upload.metadata.relativePath || '/';
-        
+
+        if (!username || !filename) {
+            throw new Error(`Metadata mancante: username=${username}, filename=${filename}`);
+        }
+
         // Costruzione percorso finale
         const userRoot = path.resolve(config.primaryDisk, username);
         const cleanPath = relativePath.replace(/^[\/\\]/, '');
         const targetDir = path.resolve(userRoot, cleanPath);
-        
+
         // Anti-path traversal
         if (!targetDir.startsWith(userRoot)) {
-             throw new Error('Path traversal detected in relativePath');
+            throw new Error('Path traversal detected in relativePath');
         }
-        
+
         const targetFile = path.resolve(targetDir, filename);
         if (!targetFile.startsWith(targetDir)) {
-             throw new Error('Path traversal detected in filename');
+            throw new Error('Path traversal detected in filename');
         }
 
         const tempFilePath = path.join(tusTmpDir, upload.id);
 
         logger.info(`[TUS] Upload completato: ${filename} per ${username}. Spostamento in ${targetFile}`);
-        
+
         await fse.ensureDir(targetDir);
         await fse.move(tempFilePath, targetFile, { overwrite: true });
 
-        // Pulizia eventuale file .info creato da tus-file-store
+        // Pulizia file .info creato da tus-file-store
         const infoFile = tempFilePath + '.info';
         if (await fse.pathExists(infoFile)) {
             await fse.remove(infoFile);
