@@ -438,8 +438,8 @@ async function processUploadQueue() {
     return processUploadQueue();
   }
 
-  // TUS chunk size: 25 MB
-  const chunkSize = 25 * 1024 * 1024;
+  // TUS chunk size: 10 MB (più leggero per il Raspberry Pi 3 e i suoi dischi USB lenti)
+  const chunkSize = 10 * 1024 * 1024;
   
   const options = {
     endpoint: '/api/tus/',
@@ -454,16 +454,20 @@ async function processUploadQueue() {
     onError: function(error) {
       console.error('TUS Upload failed:', error);
       if (statusEl) {
-        statusEl.textContent = 'Errore Rete';
+        statusEl.textContent = 'Errore Rete (Riprova per riprendere)';
         statusEl.style.color = '#ff4444';
+        statusEl.title = error.message || 'Errore di connessione';
       }
       if (progressEl) progressEl.style.background = '#ff4444';
+      
+      if (titleEl) titleEl.textContent = 'Caricamenti Interrotti';
+      
       isUploading = false;
       processUploadQueue();
     },
     onProgress: function(bytesUploaded, bytesTotal) {
       if (progressEl) {
-        const percentComplete = Math.round((bytesUploaded / bytesTotal) * 100);
+        const percentComplete = Math.max(1, Math.round((bytesUploaded / bytesTotal) * 100));
         progressEl.style.width = percentComplete + '%';
         if (statusEl) statusEl.textContent = percentComplete + '%';
       }
@@ -473,7 +477,10 @@ async function processUploadQueue() {
         statusEl.textContent = 'Completato';
         statusEl.style.color = '#4caf50';
       }
-      if (progressEl) progressEl.style.background = '#4caf50';
+      if (progressEl) {
+        progressEl.style.width = '100%'; // Forza il riempimento della barra
+        progressEl.style.background = '#4caf50';
+      }
       
       // Refresh UI if this was uploaded to current dir
       if (uploadPath === currentPath || uploadPath.startsWith(currentPath)) {
