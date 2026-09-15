@@ -469,6 +469,18 @@ async function processUploadQueue() {
       relativePath: uploadPath || '/',
       token: currentToken   // Chiave minuscola per evitare problemi di case-sensitivity nel parsing TUS
     },
+    // Funzione di fingerprint custom: ignoriamo il metadata (che contiene il token variabile)
+    // In questo modo, lo stesso file avrà sempre lo stesso ID e riprenderà correttamente
+    fingerprint: function (file, options) {
+      return [
+        'tus-resumable',
+        file.name,
+        file.type,
+        file.size,
+        file.lastModified,
+        options.endpoint
+      ].join('-');
+    },
     onBeforeRequest: function(req) {
       // withCredentials per i cookie di sessione come backup
       const xhr = req.getUnderlyingObject();
@@ -518,7 +530,18 @@ async function processUploadQueue() {
   };
 
   const upload = new tus.Upload(file, options);
-  upload.start();
+
+  // Implementazione del resume automatico in tus-js-client v3+
+  upload.findPreviousUploads().then(function (previousUploads) {
+    if (previousUploads.length > 0) {
+      // Trovato un caricamento precedente per questo file, lo riprendiamo
+      upload.resumeFromPreviousUpload(previousUploads[0]);
+    }
+    upload.start();
+  }).catch(function (error) {
+    // Se fallisce la ricerca, iniziamo un caricamento da zero
+    upload.start();
+  });
 }
 
 // Bind upload manager buttons
