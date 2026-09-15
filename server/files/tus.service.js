@@ -26,6 +26,13 @@ function extractAndVerifyToken(req, upload) {
         return req.headers[name.toLowerCase()];
     };
 
+    // DEBUG META
+    if (upload && upload.metadata) {
+        logger.info(`[TUS DEBUG] Metadata ricevuti: ${Object.keys(upload.metadata).join(', ')}`);
+    } else {
+        logger.info(`[TUS DEBUG] Nessun metadata disponibile. upload=${!!upload}`);
+    }
+
     // METODO 1 (preferito): Token nel metadata TUS
     if (upload && upload.metadata) {
         token = upload.metadata.token || upload.metadata.authtoken || upload.metadata.authToken || null;
@@ -70,6 +77,7 @@ function extractAndVerifyToken(req, upload) {
             }
         }
         logger.warn(`[TUS] Nessun token trovato. Headers: ${headersList}`);
+        logger.warn(`[TUS DEBUG] upload-metadata grezzo: ${getHeader('upload-metadata')}`);
         return null;
     }
 
@@ -87,14 +95,15 @@ const tusServer = new Server({
     namingFunction: (req) => {
         return require('crypto').randomBytes(16).toString('hex');
     },
-    onUploadCreate: async (req, res, upload) => {
+    // onUploadCreate riceve (req, upload) in @tus/server v2 (NON riceve 'res')
+    onUploadCreate: async (req, upload) => {
         try {
             // Usa req.user se già impostato da Express, altrimenti verifica il token manualmente
             // Prima controlla il metadata (metodo più affidabile), poi gli header HTTP
             const user = req.user || extractAndVerifyToken(req, upload);
 
             if (!user) {
-                logger.warn(`[TUS] Accesso non autorizzato. IP: ${req.ip}`);
+                logger.warn(`[TUS] Accesso non autorizzato. IP: ${req.url}`);
                 throw { status_code: 401, body: 'Unauthorized' };
             }
 
