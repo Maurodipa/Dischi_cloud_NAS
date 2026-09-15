@@ -447,16 +447,17 @@ async function processUploadQueue() {
     await ensureValidToken();
   }
 
-  // STEP 2: Leggi il token fresco e mettilo negli header statici dell'upload.
-  // tus-js-client non supporta async in onBeforeRequest nel browser (non viene awaited),
-  // quindi il token DEVE essere impostato qui, non nell'hook.
-  const authHeaders = typeof getAuthHeaders === 'function' ? getAuthHeaders() : {};
+  // DEBUG: verifica stato token
+  const dbgHeaders = typeof getAuthHeaders === 'function' ? getAuthHeaders() : {};
+  console.log('[TUS DEBUG] accessToken presente:', !!(typeof accessToken !== 'undefined' && accessToken));
+  console.log('[TUS DEBUG] getAuthHeaders:', JSON.stringify(dbgHeaders));
 
-  // STEP 2: Leggi il token fresco - lo passiamo nel metadata TUS, non negli header HTTP
-  // (gli header XHR hanno problemi di doppia impostazione e concatenazione con virgola)
-  const currentToken = typeof getAuthHeaders === 'function' 
-    ? (getAuthHeaders().Authorization || '').replace('Bearer ', '').trim()
+  // STEP 2: Leggi il token fresco - lo passiamo nel metadata TUS
+  const currentToken = dbgHeaders.Authorization
+    ? dbgHeaders.Authorization.replace('Bearer ', '').trim()
     : '';
+
+  console.log('[TUS DEBUG] currentToken lunghezza:', currentToken.length);
 
   const options = {
     endpoint: '/api/tus/',
