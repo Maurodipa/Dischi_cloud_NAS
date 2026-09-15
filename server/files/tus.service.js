@@ -123,50 +123,99 @@ const tusServer = new Server({
             logger.error(`[TUS] Errore inatteso in onUploadCreate: ${err.message}`);
             throw { status_code: 500, body: 'Internal Server Error' };
         }
-    }
-});
+    },
+    onUploadFinish: async (req, upload) => {
+        try {
+            const username = upload.metadata.username;
+            const filename = upload.metadata.filename;
+            const relativePath = upload.metadata.relativePath || '/';
 
-tusServer.on(EVENTS.POST_FINISH, async (req, res, upload) => {
+            if (!username || !filename) {
+                throw new Error(`Metadata mancante: username=${username}, filename=${filename}`);
+            }
+
+            // Costruzione percorso finale
+            const userRoot = path.resolve(config.primaryDisk, username);
+            const cleanPath = relativePath.replace(/^[\/\\]/, '');
+            const targetDir = path.resolve(userRoot, cleanPath);
+
+            // Anti-path traversal
+            if (!targetDir.startsWith(userRoot)) {
+                throw new Error('Path traversal detected in relativePath');
+            }
+
+            const targetFile = path.resolve(targetDir, filename);
+            if (!targetFile.startsWith(targetDir)) {
+                throw new Error('Path traversal detected in filename');
+            }
+
+            const tempFilePath = path.join(tusTmpDir, upload.id);
+
+            logger.info(`[TUS] Upload completato: ${filename} per ${username}. Spostamento in ${targetFile}`);
+
+            await fse.ensureDir(targetDir);
+            await fse.move(tempFilePath, targetFile, { overwrite: true });
+
+            // Pulizia file .info creato da tus-file-store
+            const infoFile = tempFilePath + '.info';
+            if (await fse.pathExists(infoFile)) {
+                await fse.remove(infoFile);
+            }
+
+            return {};
+        } catch (err) {
+            logger.error(`[TUS] Errore nello spostamento del file completato: ${err.message}`);
+            // Returning error prevents 204 success response
+            throw { status_code: 500, body: 'Error moving file' };
+        }
+    }
+// Funzione per recuperare i file rimasti bloccati in .tus_tmp
+const rescueStuckUploads = async () => {
     try {
-        const username = upload.metadata.username;
-        const filename = upload.metadata.filename;
-        const relativePath = upload.metadata.relativePath || '/';
-
-        if (!username || !filename) {
-            throw new Error(`Metadata mancante: username=${username}, filename=${filename}`);
+        if (!await fse.pathExists(tusTmpDir)) return;
+        const files = await fse.readdir(tusTmpDir);
+        const infoFiles = files.filter(f => f.endsWith('.info'));
+        
+        for (const infoFile of infoFiles) {
+            try {
+                const infoPath = path.join(tusTmpDir, infoFile);
+                const infoData = await fse.readJson(infoPath);
+                
+                // Se l'upload è completato
+                if (infoData && infoData.offset === infoData.size && infoData.size > 0) {
+                    const uploadId = infoData.id;
+                    const dataFile = path.join(tusTmpDir, uploadId);
+                    
+                    if (await fse.pathExists(dataFile)) {
+                        logger.info(`[TUS Rescue] Trovato file completato ma non spostato: ${infoData.metadata?.filename}`);
+                        
+                        const username = infoData.metadata?.username;
+                        const filename = infoData.metadata?.filename;
+                        const relativePath = infoData.metadata?.relativePath || '/';
+                        
+                        if (username && filename) {
+                            const userRoot = path.resolve(config.primaryDisk, username);
+                            const cleanPath = relativePath.replace(/^[\/\\]/, '');
+                            const targetDir = path.resolve(userRoot, cleanPath);
+                            const targetFile = path.resolve(targetDir, filename);
+                            
+                            await fse.ensureDir(targetDir);
+                            await fse.move(dataFile, targetFile, { overwrite: true });
+                            await fse.remove(infoPath);
+                            logger.info(`[TUS Rescue] File recuperato e spostato in: ${targetFile}`);
+                        }
+                    }
+                }
+            } catch (e) {
+                logger.error(`[TUS Rescue] Errore nel processare ${infoFile}: ${e.message}`);
+            }
         }
-
-        // Costruzione percorso finale
-        const userRoot = path.resolve(config.primaryDisk, username);
-        const cleanPath = relativePath.replace(/^[\/\\]/, '');
-        const targetDir = path.resolve(userRoot, cleanPath);
-
-        // Anti-path traversal
-        if (!targetDir.startsWith(userRoot)) {
-            throw new Error('Path traversal detected in relativePath');
-        }
-
-        const targetFile = path.resolve(targetDir, filename);
-        if (!targetFile.startsWith(targetDir)) {
-            throw new Error('Path traversal detected in filename');
-        }
-
-        const tempFilePath = path.join(tusTmpDir, upload.id);
-
-        logger.info(`[TUS] Upload completato: ${filename} per ${username}. Spostamento in ${targetFile}`);
-
-        await fse.ensureDir(targetDir);
-        await fse.move(tempFilePath, targetFile, { overwrite: true });
-
-        // Pulizia file .info creato da tus-file-store
-        const infoFile = tempFilePath + '.info';
-        if (await fse.pathExists(infoFile)) {
-            await fse.remove(infoFile);
-        }
-
     } catch (err) {
-        logger.error(`[TUS] Errore nello spostamento del file completato: ${err.message}`);
+        logger.error(`[TUS Rescue] Errore generale: ${err.message}`);
     }
-});
+};
 
-module.exports = tusServer;
+module.exports = {
+    tusServer,
+    rescueStuckUploads
+};

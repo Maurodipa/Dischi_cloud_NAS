@@ -56,7 +56,9 @@ app.use('/api/files/upload', uploadLimiter);
 app.use('/api/files', filesRoutes);
 
 // TUS Protocol routes for chunked uploads - auth gestita internamente in onUploadCreate
-const tusServer = require('./files/tus.service.js');
+const { tusServer, rescueStuckUploads } = require('./files/tus.service');
+rescueStuckUploads();
+
 app.all('/api/tus/*', tusServer.handle.bind(tusServer));
 app.all('/api/tus', tusServer.handle.bind(tusServer));
 
