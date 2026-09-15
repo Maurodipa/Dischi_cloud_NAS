@@ -56,10 +56,10 @@ app.use('/api/files/upload', uploadLimiter);
 app.use('/api/files', filesRoutes);
 
 // TUS Protocol routes for chunked uploads
-const { requireAuth, optionalAuth } = require('./auth/auth.middleware.js');
+const { requireAuth } = require('./auth/auth.middleware.js');
 const tusServer = require('./files/tus.service.js');
-app.all('/api/tus/*', optionalAuth, tusServer.handle.bind(tusServer));
-app.all('/api/tus', optionalAuth, tusServer.handle.bind(tusServer));
+app.all('/api/tus/*', requireAuth, tusServer.handle.bind(tusServer));
+app.all('/api/tus', requireAuth, tusServer.handle.bind(tusServer));
 
 // Sync status endpoint
 app.get('/api/sync/status', (req, res) => {
