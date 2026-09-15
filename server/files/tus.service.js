@@ -16,23 +16,28 @@ fse.ensureDirSync(tusTmpDir);
  * Necessario perché @tus/server gestisce il routing internamente e
  * l'integrazione con i middleware Express non è affidabile al 100%.
  */
-function extractAndVerifyToken(req) {
+function extractAndVerifyToken(req, upload) {
     let token = null;
 
-    // 1. Authorization header
-    if (req.headers && req.headers.authorization) {
+    // METODO 1 (preferito): Token nel metadata TUS - bypass totale dei problemi header XHR
+    if (upload && upload.metadata && upload.metadata.authToken) {
+        token = upload.metadata.authToken.trim();
+    }
+
+    // METODO 2: Authorization header (Bearer)
+    if (!token && req.headers && req.headers.authorization) {
         const auth = req.headers.authorization;
         if (auth.startsWith('Bearer ')) {
-            token = auth.slice(7).trim();
+            token = auth.slice(7).split(',')[0].trim(); // split(',')[0] protegge dalla doppia concatenazione
         }
     }
 
-    // 2. Cookie parsato da cookie-parser
+    // METODO 3: Cookie parsato da cookie-parser
     if (!token && req.cookies) {
         token = req.cookies.access_token || req.cookies.accessToken || null;
     }
 
-    // 3. Cookie raw (se cookie-parser non ha processato la richiesta)
+    // METODO 4: Cookie raw (se cookie-parser non ha processato la richiesta)
     if (!token && req.headers && req.headers.cookie) {
         for (const part of req.headers.cookie.split(';')) {
             const idx = part.indexOf('=');
@@ -44,11 +49,6 @@ function extractAndVerifyToken(req) {
                 break;
             }
         }
-    }
-
-    // 4. Query string (fallback)
-    if (!token && req.query && req.query.token) {
-        token = req.query.token;
     }
 
     if (!token) {
@@ -73,7 +73,8 @@ const tusServer = new Server({
     onUploadCreate: async (req, res, upload) => {
         try {
             // Usa req.user se già impostato da Express, altrimenti verifica il token manualmente
-            const user = req.user || extractAndVerifyToken(req);
+            // Prima controlla il metadata (metodo più affidabile), poi gli header HTTP
+            const user = req.user || extractAndVerifyToken(req, upload);
 
             if (!user) {
                 logger.warn(`[TUS] Accesso non autorizzato. IP: ${req.ip}`);

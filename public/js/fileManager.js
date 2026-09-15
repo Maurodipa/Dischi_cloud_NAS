@@ -452,6 +452,12 @@ async function processUploadQueue() {
   // quindi il token DEVE essere impostato qui, non nell'hook.
   const authHeaders = typeof getAuthHeaders === 'function' ? getAuthHeaders() : {};
 
+  // STEP 2: Leggi il token fresco - lo passiamo nel metadata TUS, non negli header HTTP
+  // (gli header XHR hanno problemi di doppia impostazione e concatenazione con virgola)
+  const currentToken = typeof getAuthHeaders === 'function' 
+    ? (getAuthHeaders().Authorization || '').replace('Bearer ', '').trim()
+    : '';
+
   const options = {
     endpoint: '/api/tus/',
     retryDelays: [0, 3000, 5000, 10000, 20000],
@@ -459,18 +465,15 @@ async function processUploadQueue() {
     metadata: {
       filename: file.name,
       filetype: file.type || 'application/octet-stream',
-      relativePath: uploadPath || '/'
+      relativePath: uploadPath || '/',
+      authToken: currentToken   // Token passato nel metadata TUS — bypass totale dei problemi XHR header
     },
-    headers: authHeaders,
     onBeforeRequest: function(req) {
-      // Imposta withCredentials per inviare i cookie di sessione come backup
+      // withCredentials per i cookie di sessione come backup
       const xhr = req.getUnderlyingObject();
       if (xhr && typeof xhr.withCredentials !== 'undefined') {
         xhr.withCredentials = true;
       }
-      // NOTA: Non impostiamo Authorization qui perché è già impostato tramite
-      // options.headers. Impostarlo due volte causa XHR a concatenare con virgola
-      // (es. "Bearer token, Bearer token") rendendo il token non valido.
     },
     onError: function(error) {
       console.error('TUS Upload failed:', error);
