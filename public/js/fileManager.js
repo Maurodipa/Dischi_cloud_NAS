@@ -440,11 +440,9 @@ async function processUploadQueue() {
 
   // TUS chunk size: 10 MB (più leggero per il Raspberry Pi 3 e i suoi dischi USB lenti)
   const chunkSize = 10 * 1024 * 1024;
-  
-  const authHeaders = {};
-  if (typeof accessToken !== 'undefined' && accessToken) {
-    authHeaders['Authorization'] = `Bearer ${accessToken}`;
-  }
+
+  // Usa la funzione di sistema per ottenere l'header di autenticazione in modo sicuro
+  const authHeaders = typeof getAuthHeaders === 'function' ? getAuthHeaders() : {};
 
   const options = {
     endpoint: '/api/tus/',
@@ -459,10 +457,7 @@ async function processUploadQueue() {
     onBeforeRequest: function(req) {
       const xhr = req.getUnderlyingObject();
       if (xhr && typeof xhr.withCredentials !== 'undefined') {
-        xhr.withCredentials = true; // Necessario per inviare i cookie di sessione se accessToken manca
-      }
-      if (typeof accessToken !== 'undefined' && accessToken) {
-        req.setHeader('Authorization', `Bearer ${accessToken}`);
+        xhr.withCredentials = true; // Necessario per l'autenticazione tramite cookie di fallback
       }
     },
     onError: function(error) {
