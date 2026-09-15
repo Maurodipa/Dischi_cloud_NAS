@@ -441,6 +441,11 @@ async function processUploadQueue() {
   // TUS chunk size: 10 MB (più leggero per il Raspberry Pi 3 e i suoi dischi USB lenti)
   const chunkSize = 10 * 1024 * 1024;
 
+  // Assicurati che il token sia valido (se è scaduto, lo rinnova prima di iniziare l'upload)
+  if (typeof ensureValidToken === 'function') {
+    await ensureValidToken();
+  }
+
   // Usa la funzione di sistema per ottenere l'header di autenticazione in modo sicuro
   const authHeaders = typeof getAuthHeaders === 'function' ? getAuthHeaders() : {};
 
@@ -454,10 +459,20 @@ async function processUploadQueue() {
       relativePath: uploadPath || '/'
     },
     headers: authHeaders,
-    onBeforeRequest: function(req) {
+    onBeforeRequest: async function(req) {
       const xhr = req.getUnderlyingObject();
       if (xhr && typeof xhr.withCredentials !== 'undefined') {
         xhr.withCredentials = true; // Necessario per l'autenticazione tramite cookie di fallback
+      }
+      
+      // Controllo vitale: rinnova il token prima di inviare OGNI singolo chunk
+      // Se un file da 600MB impiega 20 minuti, il token scadrà a metà. Questo lo salva!
+      if (typeof ensureValidToken === 'function') {
+         await ensureValidToken();
+      }
+      const freshHeaders = typeof getAuthHeaders === 'function' ? getAuthHeaders() : {};
+      if (freshHeaders.Authorization) {
+         req.setHeader('Authorization', freshHeaders.Authorization);
       }
     },
     onError: function(error) {

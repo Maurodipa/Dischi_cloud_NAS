@@ -112,6 +112,22 @@ function stopTokenRefresh() {
   }
 }
 
+async function ensureValidToken() {
+  if (!accessToken) {
+    await refreshToken();
+    return;
+  }
+  const decoded = parseJwt(accessToken);
+  if (!decoded) {
+    await refreshToken();
+    return;
+  }
+  // Se scade tra meno di 1 minuto, fai il refresh proattivo
+  if (decoded.exp * 1000 < Date.now() + 60000) {
+    await refreshToken();
+  }
+}
+
 function getAuthHeaders() {
   return accessToken ? { 'Authorization': `Bearer ${accessToken}` } : {};
 }
