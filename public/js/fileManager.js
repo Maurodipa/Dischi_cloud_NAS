@@ -468,11 +468,9 @@ async function processUploadQueue() {
       if (xhr && typeof xhr.withCredentials !== 'undefined') {
         xhr.withCredentials = true;
       }
-      // Aggiorna l'header sincrono con il token attuale (potrebbe essere stato rinnovato nel frattempo)
-      const currentHeaders = typeof getAuthHeaders === 'function' ? getAuthHeaders() : {};
-      if (currentHeaders.Authorization) {
-        req.setHeader('Authorization', currentHeaders.Authorization);
-      }
+      // NOTA: Non impostiamo Authorization qui perché è già impostato tramite
+      // options.headers. Impostarlo due volte causa XHR a concatenare con virgola
+      // (es. "Bearer token, Bearer token") rendendo il token non valido.
     },
     onError: function(error) {
       console.error('TUS Upload failed:', error);
