@@ -451,6 +451,15 @@ async function processUploadQueue() {
       relativePath: uploadPath || '/'
     },
     headers: {},
+    onBeforeRequest: function(req) {
+      const xhr = req.getUnderlyingObject();
+      if (xhr && typeof xhr.withCredentials !== 'undefined') {
+        xhr.withCredentials = true; // Necessario per inviare i cookie di sessione se accessToken manca
+      }
+      if (typeof accessToken !== 'undefined' && accessToken) {
+        req.setHeader('Authorization', `Bearer ${accessToken}`);
+      }
+    },
     onError: function(error) {
       console.error('TUS Upload failed:', error);
       if (statusEl) {
@@ -491,10 +500,6 @@ async function processUploadQueue() {
       processUploadQueue();
     }
   };
-
-  if (typeof accessToken !== 'undefined' && accessToken) {
-    options.headers['Authorization'] = `Bearer ${accessToken}`;
-  }
 
   const upload = new tus.Upload(file, options);
   upload.start();
