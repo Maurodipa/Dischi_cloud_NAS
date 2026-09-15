@@ -19,41 +19,57 @@ fse.ensureDirSync(tusTmpDir);
 function extractAndVerifyToken(req, upload) {
     let token = null;
 
-    // METODO 1 (preferito): Token nel metadata TUS - bypass totale dei problemi header XHR
-    // tus-js-client può convertire i nomi delle chiavi in minuscolo, proviamo entrambi
+    // Helper per leggere header sia da Express (req.headers.xyz) sia da Web Request (req.headers.get('xyz'))
+    const getHeader = (name) => {
+        if (!req.headers) return null;
+        if (typeof req.headers.get === 'function') return req.headers.get(name);
+        return req.headers[name.toLowerCase()];
+    };
+
+    // METODO 1 (preferito): Token nel metadata TUS
     if (upload && upload.metadata) {
         token = upload.metadata.token || upload.metadata.authtoken || upload.metadata.authToken || null;
     }
 
     // METODO 2: Authorization header (Bearer)
-    if (!token && req.headers && req.headers.authorization) {
-        const auth = req.headers.authorization;
-        if (auth.startsWith('Bearer ')) {
-            token = auth.slice(7).split(',')[0].trim(); // split(',')[0] protegge dalla doppia concatenazione
+    if (!token) {
+        const auth = getHeader('authorization');
+        if (auth && auth.startsWith('Bearer ')) {
+            token = auth.slice(7).split(',')[0].trim();
         }
     }
 
-    // METODO 3: Cookie parsato da cookie-parser
+    // METODO 3: Cookie (da cookie-parser se Express, o raw)
     if (!token && req.cookies) {
         token = req.cookies.access_token || req.cookies.accessToken || null;
     }
 
-    // METODO 4: Cookie raw (se cookie-parser non ha processato la richiesta)
-    if (!token && req.headers && req.headers.cookie) {
-        for (const part of req.headers.cookie.split(';')) {
-            const idx = part.indexOf('=');
-            if (idx < 0) continue;
-            const name = part.slice(0, idx).trim();
-            const val = part.slice(idx + 1).trim();
-            if (name === 'access_token' || name === 'accessToken') {
-                token = decodeURIComponent(val);
-                break;
+    if (!token) {
+        const cookieHeader = getHeader('cookie');
+        if (cookieHeader) {
+            for (const part of cookieHeader.split(';')) {
+                const idx = part.indexOf('=');
+                if (idx < 0) continue;
+                const name = part.slice(0, idx).trim();
+                const val = part.slice(idx + 1).trim();
+                if (name === 'access_token' || name === 'accessToken') {
+                    token = decodeURIComponent(val);
+                    break;
+                }
             }
         }
     }
 
     if (!token) {
-        logger.warn(`[TUS] Nessun token trovato. Headers: ${Object.keys(req.headers || {}).join(', ')}`);
+        let headersList = 'N/A';
+        if (req.headers) {
+            if (typeof req.headers.keys === 'function') {
+                headersList = Array.from(req.headers.keys()).join(', ');
+            } else {
+                headersList = Object.keys(req.headers).join(', ');
+            }
+        }
+        logger.warn(`[TUS] Nessun token trovato. Headers: ${headersList}`);
         return null;
     }
 
