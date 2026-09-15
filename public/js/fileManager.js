@@ -446,9 +446,6 @@ async function processUploadQueue() {
     await ensureValidToken();
   }
 
-  // Usa la funzione di sistema per ottenere l'header di autenticazione in modo sicuro
-  const authHeaders = typeof getAuthHeaders === 'function' ? getAuthHeaders() : {};
-
   const options = {
     endpoint: '/api/tus/',
     retryDelays: [0, 3000, 5000, 10000, 20000],
@@ -458,7 +455,7 @@ async function processUploadQueue() {
       filetype: file.type || 'application/octet-stream',
       relativePath: uploadPath || '/'
     },
-    headers: authHeaders,
+    // Nota: l'autenticazione è gestita esplicitamente in onBeforeRequest per evitare duplicazioni di header
     onBeforeRequest: async function(req) {
       const xhr = req.getUnderlyingObject();
       if (xhr && typeof xhr.withCredentials !== 'undefined') {
