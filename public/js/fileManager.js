@@ -441,6 +441,11 @@ async function processUploadQueue() {
   // TUS chunk size: 10 MB (più leggero per il Raspberry Pi 3 e i suoi dischi USB lenti)
   const chunkSize = 10 * 1024 * 1024;
   
+  const authHeaders = {};
+  if (typeof accessToken !== 'undefined' && accessToken) {
+    authHeaders['Authorization'] = `Bearer ${accessToken}`;
+  }
+
   const options = {
     endpoint: '/api/tus/',
     retryDelays: [0, 3000, 5000, 10000, 20000],
@@ -450,7 +455,7 @@ async function processUploadQueue() {
       filetype: file.type || 'application/octet-stream',
       relativePath: uploadPath || '/'
     },
-    headers: {},
+    headers: authHeaders,
     onBeforeRequest: function(req) {
       const xhr = req.getUnderlyingObject();
       if (xhr && typeof xhr.withCredentials !== 'undefined') {

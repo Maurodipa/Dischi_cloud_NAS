@@ -32,6 +32,7 @@ app.use(helmet({
     }
 }));
 app.use(cors({ origin: true, credentials: true }));
+app.options('*', cors({ origin: true, credentials: true })); // Gestisce i preflight OPTIONS (fondamentale per TUS)
 app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -55,9 +56,10 @@ app.use('/api/files/upload', uploadLimiter);
 app.use('/api/files', filesRoutes);
 
 // TUS Protocol routes for chunked uploads
+const { requireAuth } = require('./auth/auth.middleware.js');
 const tusServer = require('./files/tus.service.js');
-app.all('/api/tus/*', tusServer.handle.bind(tusServer));
-app.all('/api/tus', tusServer.handle.bind(tusServer));
+app.all('/api/tus/*', requireAuth, tusServer.handle.bind(tusServer));
+app.all('/api/tus', requireAuth, tusServer.handle.bind(tusServer));
 
 // Sync status endpoint
 app.get('/api/sync/status', (req, res) => {

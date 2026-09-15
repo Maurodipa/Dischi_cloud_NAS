@@ -18,28 +18,12 @@ const tusServer = new Server({
         return require('crypto').randomBytes(16).toString('hex');
     },
     onUploadCreate: async (req, res, upload) => {
-        // Authentication check (since TUS might not hit our express middleware directly)
-        let token;
-        if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
-            token = req.headers.authorization.split(' ')[1];
-        } else if (req.headers.cookie) {
-            const cookies = req.headers.cookie.split(';').map(c => c.trim());
-            const accessCookie = cookies.find(c => c.startsWith('access_token='));
-            if (accessCookie) token = accessCookie.split('=')[1];
-        }
-
-        if (!token) {
+        if (!req.user) {
             throw { status_code: 401, body: 'Unauthorized' };
         }
 
-        try {
-            const decoded = jwt.verify(token, config.jwtSecret);
-            // Append username to metadata so we know where to save it later
-            upload.metadata.username = decoded.username || decoded.id; // Fallback to id if username isn't used
-        } catch (err) {
-            logger.warn(`TUS Auth err: ${err.message}`);
-            throw { status_code: 401, body: 'Invalid token' };
-        }
+        // Append username to metadata so we know where to save it later
+        upload.metadata.username = req.user.username || req.user.id; // Fallback to id se username non presente
 
         if (!upload.metadata.filename) {
             throw { status_code: 400, body: 'filename is required in metadata' };
