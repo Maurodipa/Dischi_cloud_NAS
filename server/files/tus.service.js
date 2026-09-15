@@ -20,8 +20,9 @@ function extractAndVerifyToken(req, upload) {
     let token = null;
 
     // METODO 1 (preferito): Token nel metadata TUS - bypass totale dei problemi header XHR
-    if (upload && upload.metadata && upload.metadata.authToken) {
-        token = upload.metadata.authToken.trim();
+    // tus-js-client può convertire i nomi delle chiavi in minuscolo, proviamo entrambi
+    if (upload && upload.metadata) {
+        token = upload.metadata.token || upload.metadata.authtoken || upload.metadata.authToken || null;
     }
 
     // METODO 2: Authorization header (Bearer)

@@ -467,7 +467,7 @@ async function processUploadQueue() {
       filename: file.name,
       filetype: file.type || 'application/octet-stream',
       relativePath: uploadPath || '/',
-      authToken: currentToken   // Token passato nel metadata TUS — bypass totale dei problemi XHR header
+      token: currentToken   // Chiave minuscola per evitare problemi di case-sensitivity nel parsing TUS
     },
     onBeforeRequest: function(req) {
       // withCredentials per i cookie di sessione come backup
