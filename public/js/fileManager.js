@@ -472,14 +472,14 @@ async function processUploadQueue() {
     // Funzione di fingerprint custom: ignoriamo il metadata (che contiene il token variabile)
     // In questo modo, lo stesso file avrà sempre lo stesso ID e riprenderà correttamente
     fingerprint: function (file, options) {
-      return [
+      return Promise.resolve([
         'tus-resumable',
         file.name,
         file.type,
         file.size,
         file.lastModified,
         options.endpoint
-      ].join('-');
+      ].join('-'));
     },
     onBeforeRequest: function(req) {
       // withCredentials per i cookie di sessione come backup
