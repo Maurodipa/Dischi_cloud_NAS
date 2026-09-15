@@ -55,11 +55,10 @@ app.use('/api/auth/webauthn', webauthnRoutes);
 app.use('/api/files/upload', uploadLimiter);
 app.use('/api/files', filesRoutes);
 
-// TUS Protocol routes for chunked uploads
-const { requireAuth } = require('./auth/auth.middleware.js');
+// TUS Protocol routes for chunked uploads - auth gestita internamente in onUploadCreate
 const tusServer = require('./files/tus.service.js');
-app.all('/api/tus/*', requireAuth, tusServer.handle.bind(tusServer));
-app.all('/api/tus', requireAuth, tusServer.handle.bind(tusServer));
+app.all('/api/tus/*', tusServer.handle.bind(tusServer));
+app.all('/api/tus', tusServer.handle.bind(tusServer));
 
 // Sync status endpoint
 app.get('/api/sync/status', (req, res) => {
