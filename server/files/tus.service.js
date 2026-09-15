@@ -115,7 +115,9 @@ const tusServer = new Server({
             }
 
             logger.info(`[TUS] Upload avviato: ${upload.metadata.filename} per utente ${upload.metadata.username}`);
-            return res;
+            
+            // @tus/server v2 si aspetta che ritorniamo un oggetto con eventuali modifiche ai metadata
+            return { metadata: upload.metadata };
         } catch (err) {
             if (err.status_code) throw err;
             logger.error(`[TUS] Errore inatteso in onUploadCreate: ${err.message}`);
