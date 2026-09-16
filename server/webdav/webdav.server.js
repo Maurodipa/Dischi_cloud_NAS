@@ -37,7 +37,7 @@ class CustomHTTPAuth {
         });
         
         if (!wdUser) {
-          wdUser = this.userManager.addUser(username, password, false);
+          wdUser = this.userManager.addUser(username, password, true); // true = isAdministrator
         }
         return wdUser;
       }
