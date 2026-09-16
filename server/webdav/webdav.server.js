@@ -122,8 +122,8 @@ async function startWebDAVServer() {
         httpsServer.requestTimeout = 0;
         httpsServer.keepAliveTimeout = 0;
         
-        httpsServer.listen(config.webdavPort || 1900, () => {
-          logger.info(`[WebDAV] Server running on HTTPS port ${config.webdavPort || 1900}`);
+        httpsServer.listen(config.webdavPort || 1900, '0.0.0.0', () => {
+          logger.info(`[WebDAV] Server running on HTTPS port ${config.webdavPort || 1900} (0.0.0.0)`);
           resolve(httpsServer);
         });
       } else {
