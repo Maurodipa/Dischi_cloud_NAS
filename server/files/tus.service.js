@@ -169,6 +169,8 @@ const tusServer = new Server({
             throw { status_code: 500, body: 'Error moving file' };
         }
     }
+});
+
 // Funzione per recuperare i file rimasti bloccati in .tus_tmp
 const rescueStuckUploads = async () => {
     try {
