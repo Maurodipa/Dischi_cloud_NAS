@@ -86,6 +86,10 @@ async function startWebDAVServer() {
       server.beforeRequest((ctx, next) => {
         if (ctx.user) {
           const username = ctx.user.username;
+          
+          // Grant access to the root folder so the client can connect and list contents
+          privilegeManager.setRights(ctx.user, '/', ['all']);
+          
           const userPath = '/' + username;
           
           if (!mountedUsers.has(username)) {
