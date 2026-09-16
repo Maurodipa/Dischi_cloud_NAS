@@ -19,14 +19,22 @@ function getLocalIp() {
 
 function getHttpsCredentials() {
     const rootDir = process.cwd();
-    const tsKeyPath = path.join(rootDir, 'tailscale.key');
-    const tsCertPath = path.join(rootDir, 'tailscale.crt');
+    
+    // 1. Cerca file generati da tailscale cert (*.ts.net.crt e *.ts.net.key) o i vecchi tailscale.crt
+    try {
+        const files = fs.readdirSync(rootDir);
+        const tsCert = files.find(f => f.endsWith('.ts.net.crt') || f === 'tailscale.crt');
+        const tsKey = files.find(f => f.endsWith('.ts.net.key') || f === 'tailscale.key');
 
-    if (fs.existsSync(tsKeyPath) && fs.existsSync(tsCertPath)) {
-        return {
-            key: fs.readFileSync(tsKeyPath, 'utf8'),
-            cert: fs.readFileSync(tsCertPath, 'utf8')
-        };
+        if (tsCert && tsKey) {
+            console.log(`[SSL] Trovati certificati Tailscale: ${tsCert} / ${tsKey}`);
+            return {
+                key: fs.readFileSync(path.join(rootDir, tsKey), 'utf8'),
+                cert: fs.readFileSync(path.join(rootDir, tsCert), 'utf8')
+            };
+        }
+    } catch (e) {
+        console.warn('[SSL] Impossibile leggere la root directory per i certificati Tailscale', e.message);
     }
 
     const certsDir = path.join(rootDir, 'certs');
