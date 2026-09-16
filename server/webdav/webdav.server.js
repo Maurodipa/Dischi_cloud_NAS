@@ -12,8 +12,8 @@ class CustomHTTPAuth {
   }
 
   askForAuthentication(ctx) {
-    ctx.response.setHeader('WWW-Authenticate', 'Basic realm="Dischi Cloud"');
-    return { 'WWW-Authenticate': 'Basic realm="Dischi Cloud"' };
+    ctx.response.setHeader('WWW-Authenticate', 'Basic realm="Dischi Cloud", charset="UTF-8"');
+    return { 'WWW-Authenticate': 'Basic realm="Dischi Cloud", charset="UTF-8"' };
   }
 
   async getUserAsync(ctx) {
@@ -23,7 +23,7 @@ class CustomHTTPAuth {
       throw webdav.Errors.UserNotFound;
     }
     
-    const decoded = Buffer.from(authHeader.split(' ')[1], 'base64').toString();
+    const decoded = Buffer.from(authHeader.split(' ')[1], 'base64').toString('utf8');
     const firstColon = decoded.indexOf(':');
     if (firstColon === -1) {
       logger.warn('[WebDAV Auth] Nessun : trovato nelle credenziali decodificate');
@@ -32,7 +32,7 @@ class CustomHTTPAuth {
     
     const username = decoded.substring(0, firstColon);
     const password = decoded.substring(firstColon + 1);
-    logger.info(`[WebDAV Auth] Tentativo di login per l'utente: '${username}'`);
+    logger.info(`[WebDAV Auth] Tentativo di login per l'utente: '${username}' (Lunghezza password decodificata: ${password.length})`);
     
     try {
       const user = await authService.validateCredentials(username, password);
