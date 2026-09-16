@@ -19,30 +19,40 @@ class CustomHTTPAuth {
   async getUserAsync(ctx) {
     const authHeader = ctx.request.headers['authorization'];
     if (!authHeader || !authHeader.startsWith('Basic ')) {
+      logger.warn(`[WebDAV Auth] Header mancante o non Basic. Headers ricevuti: ${JSON.stringify(ctx.request.headers)}`);
       throw webdav.Errors.UserNotFound;
     }
     
     const decoded = Buffer.from(authHeader.split(' ')[1], 'base64').toString();
     const firstColon = decoded.indexOf(':');
-    if (firstColon === -1) throw webdav.Errors.UserNotFound;
+    if (firstColon === -1) {
+      logger.warn('[WebDAV Auth] Nessun : trovato nelle credenziali decodificate');
+      throw webdav.Errors.UserNotFound;
+    }
     
     const username = decoded.substring(0, firstColon);
     const password = decoded.substring(firstColon + 1);
+    logger.info(`[WebDAV Auth] Tentativo di login per l'utente: '${username}'`);
     
     try {
       const user = await authService.validateCredentials(username, password);
       if (user) {
+        logger.info(`[WebDAV Auth] Password corretta per '${username}'. Creazione sessione WebDAV...`);
         let wdUser = await new Promise(resolve => {
           this.userManager.getUserByName(username, (err, u) => resolve(err ? null : u));
         });
         
         if (!wdUser) {
           wdUser = this.userManager.addUser(username, password, true); // true = isAdministrator
+          logger.info(`[WebDAV Auth] Utente '${username}' registrato come WebDAV Administrator`);
         }
         return wdUser;
+      } else {
+        logger.warn(`[WebDAV Auth] Credenziali non valide per '${username}' (password errata o utente inesistente)`);
       }
     } catch (err) {
-      logger.error(`[WebDAV] Auth error: ${err.message}`);
+      logger.error(`[WebDAV Auth] Errore critico durante la validazione: ${err.message}`);
+      console.error(err);
     }
     
     throw webdav.Errors.UserNotFound;
