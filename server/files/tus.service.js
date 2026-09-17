@@ -156,8 +156,8 @@ const tusServer = new Server({
             await fse.ensureDir(targetDir);
             await fse.move(tempFilePath, targetFile, { overwrite: true });
 
-            // Pulizia file .info creato da tus-file-store
-            const infoFile = tempFilePath + '.info';
+            // Pulizia file .json creato da @tus/file-store
+            const infoFile = tempFilePath + '.json';
             if (await fse.pathExists(infoFile)) {
                 await fse.remove(infoFile);
             }
@@ -176,7 +176,7 @@ const rescueStuckUploads = async () => {
     try {
         if (!await fse.pathExists(tusTmpDir)) return;
         const files = await fse.readdir(tusTmpDir);
-        const infoFiles = files.filter(f => f.endsWith('.info'));
+        const infoFiles = files.filter(f => f.endsWith('.json'));
         
         for (const infoFile of infoFiles) {
             try {
