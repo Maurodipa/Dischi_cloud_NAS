@@ -136,7 +136,7 @@ const tusServer = new Server({
 
             // Costruzione percorso finale
             const userRoot = path.resolve(config.primaryDisk, username);
-            const cleanPath = relativePath.replace(/^[\/\\]/, '');
+            const cleanPath = relativePath.replace(/^[\/\\]+/, '');
             const targetDir = path.resolve(userRoot, cleanPath);
 
             // Anti-path traversal
@@ -182,18 +182,19 @@ const rescueStuckUploads = async () => {
             try {
                 const infoPath = path.join(tusTmpDir, infoFile);
                 const infoData = await fse.readJson(infoPath);
-                
-                // Estraiamo l'ID dal nome del file (più sicuro che dal contenuto)
                 const uploadId = infoFile.replace('.json', '');
-                
-                // Parsing sicuro di offset e size (potrebbero essere stringhe in alcune versioni di TUS)
-                const offset = Number(infoData.offset);
                 const size = Number(infoData.size);
                 
-                // Se l'upload è completato
-                if (offset > 0 && offset === size) {
-                    const dataFile = path.join(tusTmpDir, uploadId);
-                    
+                const dataFile = path.join(tusTmpDir, uploadId);
+                let offset = 0;
+                
+                if (await fse.pathExists(dataFile)) {
+                    const stats = await fse.stat(dataFile);
+                    offset = stats.size;
+                }
+                
+                // Se l'upload è completato (il file dati ha raggiunto la dimensione dichiarata)
+                if (size > 0 && offset >= size) {
                     if (await fse.pathExists(dataFile)) {
                         logger.info(`[TUS Rescue] Trovato file completato ma non spostato: ${infoData.metadata?.filename}`);
                         
@@ -203,11 +204,11 @@ const rescueStuckUploads = async () => {
                         
                         if (username && filename) {
                             const userRoot = path.resolve(config.primaryDisk, username);
-                            let cleanPath = relativePath.replace(/^[\/\\]/, '');
+                            // Rimuovi TUTTI gli slash iniziali (es. '//Cartella' -> 'Cartella')
+                            let cleanPath = relativePath.replace(/^[\/\\]+/, '');
                             let targetDir = path.resolve(userRoot, cleanPath);
                             
-                            // Anti-path traversal per il rescue: se la cartella calcolata esce dalla root dell'utente, 
-                            // fallback alla root dell'utente per non perdere il file
+                            // Anti-path traversal per il rescue
                             if (!targetDir.startsWith(userRoot)) {
                                 logger.warn(`[TUS Rescue] Path traversal bypassato per ${filename}. Verrà salvato nella root dell'utente.`);
                                 targetDir = userRoot;
