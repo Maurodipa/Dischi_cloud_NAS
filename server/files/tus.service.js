@@ -232,7 +232,44 @@ const rescueStuckUploads = async () => {
     }
 };
 
+// Funzione per eliminare i caricamenti incompleti più vecchi di 30 giorni (Garbage Collection)
+const cleanExpiredUploads = async () => {
+    try {
+        if (!await fse.pathExists(tusTmpDir)) return;
+        
+        const now = Date.now();
+        const maxAgeMs = 30 * 24 * 60 * 60 * 1000; // 30 giorni in millisecondi
+        
+        const files = await fse.readdir(tusTmpDir);
+        let deletedCount = 0;
+        let deletedBytes = 0;
+        
+        for (const file of files) {
+            try {
+                const filePath = path.join(tusTmpDir, file);
+                const stats = await fse.stat(filePath);
+                
+                // Se il file è stato modificato per l'ultima volta più di 30 giorni fa
+                if (now - stats.mtimeMs > maxAgeMs) {
+                    deletedBytes += stats.size;
+                    await fse.remove(filePath);
+                    deletedCount++;
+                }
+            } catch (e) {
+                logger.error(`[TUS Cleanup] Errore nell'eliminare file obsoleto ${file}: ${e.message}`);
+            }
+        }
+        
+        if (deletedCount > 0) {
+            logger.info(`[TUS Cleanup] Pulizia automatica: rimossi ${deletedCount} file temporanei più vecchi di 30 giorni (Spazio liberato: ${(deletedBytes / 1024 / 1024).toFixed(2)} MB).`);
+        }
+    } catch (err) {
+        logger.error(`[TUS Cleanup] Errore generale durante la pulizia automatica: ${err.message}`);
+    }
+};
+
 module.exports = {
     tusServer,
-    rescueStuckUploads
+    rescueStuckUploads,
+    cleanExpiredUploads
 };
