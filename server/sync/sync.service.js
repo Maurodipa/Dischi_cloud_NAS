@@ -75,8 +75,8 @@ async function performInitialSync() {
     const copyRecursive = async (src, dest) => {
       const entries = await fse.readdir(src, { withFileTypes: true });
       for (const entry of entries) {
-        // Ignore internal config folder
-        if (entry.name.startsWith('.dischi-cloud')) continue;
+        // Ignore internal config folder and temp uploads
+        if (entry.name.startsWith('.dischi-cloud') || entry.name.startsWith('.tus_tmp')) continue;
         
         const srcPath = path.join(src, entry.name);
         const destPath = path.join(dest, entry.name);
@@ -125,7 +125,7 @@ async function startSync() {
   await performInitialSync();
   
   watcher = chokidar.watch(config.primaryDisk, {
-    ignored: /(^|[\/\\])\.dischi-cloud/, // ignore dotfiles/folders starting with .dischi-cloud
+    ignored: /(^|[\/\\])(\.dischi-cloud|\.tus_tmp)/, // ignore internal database and temp upload chunks
     persistent: true,
     ignoreInitial: true,
     awaitWriteFinish: {
