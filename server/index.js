@@ -15,6 +15,8 @@ const webauthnRoutes = require('./auth/webauthn.routes.js');
 const filesRoutes = require('./files/files.routes.js');
 const { startWebDAVServer } = require('./webdav/webdav.server.js');
 const { startSync, getSyncStatus } = require('./sync/sync.service.js');
+const systemRoutes = require('./system/system.routes.js');
+const { initSmartMonitoring } = require('./system/smart.service.js');
 
 // ─── Express App Setup ──────────────────────────────────────────────────────
 const app = express();
@@ -69,6 +71,9 @@ app.all('/api/tus', tusServer.handle.bind(tusServer));
 app.get('/api/sync/status', (req, res) => {
     res.json(getSyncStatus());
 });
+
+// System / S.M.A.R.T. monitoring routes
+app.use('/api/system', systemRoutes);
 
 // ─── SPA Fallback ───────────────────────────────────────────────────────────
 // Serve index.html for any non-API route (SPA-style navigation)
@@ -132,6 +137,13 @@ async function start() {
             } catch (err) {
                 logger.error(`Errore avvio sync: ${err.message}`);
             }
+        }
+
+        // Start S.M.A.R.T. disk monitoring
+        try {
+            await initSmartMonitoring();
+        } catch (err) {
+            logger.error(`Errore avvio monitoraggio S.M.A.R.T.: ${err.message}`);
         }
 
         // Graceful shutdown

@@ -18,6 +18,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   loadFiles(currentPath);
   pollSyncStatus();
   setInterval(pollSyncStatus, 15000); // Check every 15s
+
+  // Monitoraggio S.M.A.R.T. (solo admin)
+  if (currentUser && currentUser.role === 'admin') {
+    pollDiskStatus();
+    setInterval(pollDiskStatus, 60000); // Check ogni 60s
+  }
 });
 
 async function pollSyncStatus() {
@@ -48,6 +54,58 @@ async function pollSyncStatus() {
     }
   } catch (e) {
     console.error('Failed to fetch sync status', e);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// S.M.A.R.T. Disk Health Badge (solo per admin)
+// ─────────────────────────────────────────────────────────────
+async function pollDiskStatus() {
+  const badge = document.getElementById('disk-alert-badge');
+  if (!badge) return;
+
+  try {
+    const res = await apiFetch('/api/system/disk-status');
+    if (!res.ok) return;
+    const data = await res.json();
+
+    if (data.active) {
+      // Mostra il bollino rosso
+      badge.style.display = 'inline-flex';
+      badge.title = `Disco: ${data.disk}\nMessaggio: ${data.message}\nRilevato: ${new Date(data.alertedAt).toLocaleString('it-IT')}`;
+
+      // Pulsante dettagli
+      const btnDetails = document.getElementById('btn-disk-alert-details');
+      if (btnDetails) {
+        btnDetails.onclick = () => {
+          alert(`🔴 ALLERTA S.M.A.R.T.\n\nDisco: ${data.disk}\nProblema: ${data.message}\nRilevato: ${new Date(data.alertedAt).toLocaleString('it-IT')}\n\nVerifica il disco e clicca "✓ Risolto" per archiviare l'allerta.`);
+        };
+      }
+
+      // Pulsante risolvi
+      const btnResolve = document.getElementById('btn-resolve-disk-alert');
+      if (btnResolve) {
+        btnResolve.onclick = async () => {
+          if (!confirm('Confermi di aver verificato e risolto il problema con il disco?\n\nVerrà inviata un\'email di conferma e il bollino scomparirà.')) return;
+          try {
+            const r = await apiFetch('/api/system/disk-resolve', { method: 'POST' });
+            if (r.ok) {
+              badge.style.display = 'none';
+              alert('✅ Allerta marcata come risolta. Hai ricevuto una email di conferma.');
+            } else {
+              alert('Errore nella risoluzione dell\'allerta. Riprova.');
+            }
+          } catch (err) {
+            console.error('Errore nella risoluzione:', err);
+          }
+        };
+      }
+    } else {
+      // Nessuna allerta attiva: nascondi il bollino
+      badge.style.display = 'none';
+    }
+  } catch (e) {
+    console.error('Failed to fetch disk status', e);
   }
 }
 

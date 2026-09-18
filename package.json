@@ -28,6 +28,7 @@
     "selfsigned": "^2.4.1",
     "uuid": "^10.0.0",
     "webdav-server": "^2.6.2",
+    "nodemailer": "^6.9.15",
     "winston": "^3.14.0"
   }
 }

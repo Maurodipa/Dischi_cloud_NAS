@@ -26,6 +26,12 @@
         <button id="btn-add-passkey" title="Abilita l'accesso con impronta/FaceID su questo dispositivo" style="background: none; border: 1px solid var(--border-color); color: var(--text-color); cursor: pointer; padding: 4px 10px; border-radius: 20px; font-size: 0.9em;">📱 Aggiungi Impronta</button>
         <span id="current-username" title="Clicca per cambiare password" style="font-weight: bold; color: #ffffff; background: rgba(255,255,255,0.1); padding: 4px 10px; border-radius: 20px; cursor: pointer;"></span>
         <span id="sync-status">🟢 Sincronizzato</span>
+        <!-- Bollino Salute Dischi: visibile solo agli admin, nascosto di default -->
+        <span id="disk-alert-badge" style="display:none; align-items:center; gap:8px; background:rgba(231,76,60,0.15); border:1px solid #e74c3c; color:#e74c3c; padding:4px 12px; border-radius:20px; font-size:0.9em; cursor:default;">
+          🔴 <strong>Errore Disco!</strong>
+          <button id="btn-disk-alert-details" title="Vedi dettagli" style="background:none;border:none;color:#e74c3c;cursor:pointer;font-size:1em;padding:0;">ℹ️</button>
+          <button id="btn-resolve-disk-alert" title="Marca come risolto" style="background:#e74c3c;border:none;color:#fff;cursor:pointer;font-size:0.8em;padding:3px 8px;border-radius:10px;">✓ Risolto</button>
+        </span>
         <button id="btn-logout">Esci</button>
       </div>
     </header>
