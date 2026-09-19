@@ -1,158 +1,134 @@
-const chokidar = require('chokidar');
+// server/sync/sync.service.js
+// Servizio di monitoraggio sincronizzazione integrato con lsyncd (demone di sistema)
+
 const fse = require('fs-extra');
 const path = require('path');
 const config = require('../config.js');
 const logger = require('../utils/logger.js');
 
-let watcher = null;
-let isSyncing = false;
+const LSYNCD_LOG_FILE = '/var/log/lsyncd/lsyncd.log';
 
 const syncStats = {
   totalSynced: 0,
   lastSyncTime: null,
   errors: 0,
-  isHealthy: true
+  isHealthy: true,
+  mode: 'lsyncd'
 };
 
-const queue = [];
+// ─────────────────────────────────────────────
+// Gestione Webhook (chiamato da lsyncd via sync-webhook.sh)
+// ─────────────────────────────────────────────
 
-async function processQueue() {
-  if (isSyncing || queue.length === 0) return;
-  isSyncing = true;
-  
-  while (queue.length > 0) {
-    const task = queue.shift();
-    await executeTaskWithRetry(task, 3);
-  }
-  
-  isSyncing = false;
-}
+function handleWebhook(status, exitcode) {
+  const code = parseInt(exitcode, 10) || 0;
 
-async function executeTaskWithRetry(task, retries = 3) {
-  for (let i = 0; i < retries; i++) {
-    try {
-      if (task.type === 'copy') {
-        await fse.copy(task.src, task.dest, { preserveTimestamps: true });
-        logger.info(`[Sync] Copied: ${task.src} -> ${task.dest}`);
-      } else if (task.type === 'remove') {
-        await fse.remove(task.dest);
-        logger.info(`[Sync] Removed: ${task.dest}`);
-      }
-      
-      syncStats.totalSynced++;
-      syncStats.lastSyncTime = new Date().toISOString();
-      syncStats.isHealthy = true;
-      return; // Success
-    } catch (error) {
-      logger.error(`[Sync] Task failed (${i + 1}/${retries}): ${task.src || task.dest} - ${error.message}`);
-      if (i === retries - 1) {
-        syncStats.errors++;
-        syncStats.isHealthy = false;
-        logger.error(`[Sync] Task permanently failed: ${task.src || task.dest}`);
-      } else {
-        // Wait 1 second before retrying
-        await new Promise(res => setTimeout(res, 1000));
-      }
-    }
+  if (status === 'completed' && code === 0) {
+    syncStats.totalSynced++;
+    syncStats.lastSyncTime = new Date().toISOString();
+    syncStats.isHealthy = true;
+    logger.info('[Sync-lsyncd] Sincronizzazione completata con successo via webhook.');
+  } else if (status === 'error' || code !== 0) {
+    syncStats.errors++;
+    syncStats.isHealthy = false;
+    logger.error(`[Sync-lsyncd] Errore di sincronizzazione segnalato via webhook (exitcode ${code}).`);
   }
 }
 
-function queueOperation(type, relativePath) {
-  if (!relativePath) return; // Ignore root itself
-  const src = path.join(config.primaryDisk, relativePath);
-  const dest = path.join(config.backupDisk, relativePath);
-  queue.push({ type, src, dest });
-  processQueue();
-}
+// ─────────────────────────────────────────────
+// Lettura del Log di lsyncd (all'avvio e alle 04:00 AM)
+// ─────────────────────────────────────────────
 
-async function performInitialSync() {
-  logger.info('[Sync] Starting initial sync...');
+async function readLsyncdLog() {
   try {
-    if (!await fse.pathExists(config.backupDisk)) {
-      await fse.ensureDir(config.backupDisk);
+    if (!await fse.pathExists(LSYNCD_LOG_FILE)) {
+      logger.warn(`[Sync-lsyncd] File log non trovato (${LSYNCD_LOG_FILE}). lsyncd potrebbe non essere attivo.`);
+      return;
     }
-    
-    const copyRecursive = async (src, dest) => {
-      const entries = await fse.readdir(src, { withFileTypes: true });
-      for (const entry of entries) {
-        // Ignore internal config folder and temp uploads
-        if (entry.name.startsWith('.dischi-cloud') || entry.name.startsWith('.tus_tmp')) continue;
-        
-        const srcPath = path.join(src, entry.name);
-        const destPath = path.join(dest, entry.name);
-        
-        if (entry.isDirectory()) {
-          await fse.ensureDir(destPath);
-          await copyRecursive(srcPath, destPath);
-        } else {
-          const srcStat = await fse.stat(srcPath);
-          let needsCopy = true;
-          
-          if (await fse.pathExists(destPath)) {
-            const destStat = await fse.stat(destPath);
-            if (srcStat.mtime.getTime() === destStat.mtime.getTime() && srcStat.size === destStat.size) {
-              needsCopy = false;
-            }
-          }
-          
-          if (needsCopy) {
-            queueOperation('copy', path.relative(config.primaryDisk, srcPath));
-          }
+
+    const content = await fse.readFile(LSYNCD_LOG_FILE, 'utf8');
+    const lines = content.trim().split('\n').filter(Boolean);
+    const lastLines = lines.slice(-50); // Ultimi 50 eventi
+
+    let hasRecentError = false;
+    let lastSuccessTime = null;
+
+    for (const line of lastLines) {
+      if (line.includes('Normal: Executing rsync') || line.includes('Normal: Finished rsync')) {
+        // Estrai ipotetico timestamp
+        const match = line.match(/^(\w{3} \w{3}\s+\d+\s+\d+:\d+:\d+\s+\d{4})/);
+        if (match) {
+          lastSuccessTime = new Date(match[1]).toISOString();
         }
       }
-    };
-    
-    await copyRecursive(config.primaryDisk, config.backupDisk);
-    logger.info('[Sync] Initial sync queued successfully.');
-  } catch (error) {
-    logger.error(`[Sync] Initial sync error: ${error.message}`);
-    syncStats.isHealthy = false;
-    syncStats.errors++;
+      if (line.includes('Error:') || line.includes('FAIL')) {
+        hasRecentError = true;
+      }
+    }
+
+    if (lastSuccessTime) {
+      syncStats.lastSyncTime = lastSuccessTime;
+    }
+
+    if (hasRecentError) {
+      syncStats.isHealthy = false;
+      logger.warn('[Sync-lsyncd] Sanity check: rilevati errori nel log di lsyncd.');
+    } else {
+      syncStats.isHealthy = true;
+      logger.info('[Sync-lsyncd] Sanity check: lo stato di lsyncd risulta regolare.');
+    }
+
+  } catch (err) {
+    logger.error(`[Sync-lsyncd] Impossibile leggere il log di lsyncd: ${err.message}`);
   }
 }
+
+// ─────────────────────────────────────────────
+// Pianificazione Sanity Check notturno (04:00 AM)
+// ─────────────────────────────────────────────
+
+function scheduleDailySanityCheck() {
+  const now = new Date();
+  const next4am = new Date(now);
+  next4am.setHours(4, 0, 0, 0);
+  if (next4am <= now) next4am.setDate(next4am.getDate() + 1);
+
+  const msUntil4am = next4am - now;
+  logger.info(`[Sync-lsyncd] Prossimo sanity check del log lsyncd: ${next4am.toLocaleString('it-IT')}`);
+
+  setTimeout(() => {
+    readLsyncdLog();
+    setInterval(readLsyncdLog, 24 * 60 * 60 * 1000);
+  }, msUntil4am);
+}
+
+// ─────────────────────────────────────────────
+// Inizializzazione del Servizio
+// ─────────────────────────────────────────────
 
 async function startSync() {
   if (!config.syncEnabled) {
-    logger.info('[Sync] Sync is disabled in config.');
+    logger.info('[Sync-lsyncd] Sincronizzazione disattivata nelle impostazioni (.env).');
     return;
   }
-  
-  logger.info('[Sync] Starting sync service...');
-  
+
+  logger.info('[Sync-lsyncd] Avvio servizio di monitoraggio lsyncd...');
+
+  // Assicurati che le directory esistano
   await fse.ensureDir(config.primaryDisk);
   await fse.ensureDir(config.backupDisk);
-  
-  await performInitialSync();
-  
-  watcher = chokidar.watch(config.primaryDisk, {
-    ignored: /(^|[\/\\])(\.dischi-cloud|\.tus_tmp)/, // ignore internal database and temp upload chunks
-    persistent: true,
-    ignoreInitial: true,
-    awaitWriteFinish: {
-      stabilityThreshold: 30000,
-      pollInterval: 500
-    }
-  });
 
-  watcher
-    .on('add', (filePath) => queueOperation('copy', path.relative(config.primaryDisk, filePath)))
-    .on('change', (filePath) => queueOperation('copy', path.relative(config.primaryDisk, filePath)))
-    .on('unlink', (filePath) => queueOperation('remove', path.relative(config.primaryDisk, filePath)))
-    .on('addDir', (dirPath) => queueOperation('copy', path.relative(config.primaryDisk, dirPath)))
-    .on('unlinkDir', (dirPath) => queueOperation('remove', path.relative(config.primaryDisk, dirPath)))
-    .on('error', (error) => {
-      logger.error(`[Sync] Watcher error: ${error.message}`);
-      syncStats.isHealthy = false;
-    });
-    
-  logger.info('[Sync] Watcher active.');
+  // Leggi il log all'avvio per ricostruire l'ultimo stato noto
+  await readLsyncdLog();
+
+  // Pianifica il check delle 04:00 AM
+  scheduleDailySanityCheck();
+
+  logger.info('[Sync-lsyncd] Monitoraggio lsyncd attivo.');
 }
 
 function stopSync() {
-  if (watcher) {
-    watcher.close();
-    logger.info('[Sync] Watcher stopped.');
-  }
+  logger.info('[Sync-lsyncd] Servizio di monitoraggio arrestato.');
 }
 
 function getSyncStatus() {
@@ -162,5 +138,6 @@ function getSyncStatus() {
 module.exports = {
   startSync,
   stopSync,
-  getSyncStatus
+  getSyncStatus,
+  handleWebhook
 };

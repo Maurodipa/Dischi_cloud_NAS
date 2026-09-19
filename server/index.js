@@ -67,10 +67,9 @@ setInterval(cleanExpiredUploads, 24 * 60 * 60 * 1000);
 app.all('/api/tus/*', tusServer.handle.bind(tusServer));
 app.all('/api/tus', tusServer.handle.bind(tusServer));
 
-// Sync status endpoint
-app.get('/api/sync/status', (req, res) => {
-    res.json(getSyncStatus());
-});
+// Sync routes (status & lsyncd webhook)
+const syncRoutes = require('./sync/sync.routes.js');
+app.use('/api/sync', syncRoutes);
 
 // System / S.M.A.R.T. monitoring routes
 app.use('/api/system', systemRoutes);
