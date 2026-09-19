@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs-extra');
 const archiver = require('archiver');
 const filesService = require('./files.service');
+const cryptoService = require('../crypto/crypto.service.js');
 const { upload } = require('./upload.middleware');
 const { requireAuth } = require('../auth/auth.middleware.js');
 const logger = require('../utils/logger.js');
@@ -34,11 +35,28 @@ router.get('/download', async (req, res) => {
       return res.status(400).json({ error: 'Il percorso è una cartella, usa download-zip' });
     }
 
-    res.download(absolutePath, path.basename(absolutePath), (err) => {
-      if (err) {
-        logger.error('Errore durante il download:', err);
-      }
+    const filename = path.basename(absolutePath);
+    const userKey = cryptoService.deriveUserKey(req.user.username);
+    const encrypted = await cryptoService.isEncrypted(absolutePath);
+
+    res.setHeader('Content-Type', filesService.getMimeType(path.extname(filename)));
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
+
+    if (encrypted) {
+      res.setHeader('Content-Length', Math.max(0, stat.size - cryptoService.HEADER_LENGTH));
+    } else {
+      res.setHeader('Content-Length', stat.size);
+    }
+
+    const readStream = fs.createReadStream(absolutePath);
+    const decryptStream = cryptoService.createDecryptStream(userKey);
+
+    readStream.on('error', (err) => {
+      logger.error('Errore durante la lettura per download:', err);
+      if (!res.headersSent) res.status(500).end();
     });
+
+    readStream.pipe(decryptStream).pipe(res);
   } catch (err) {
     logger.error('Errore nel download del file:', err);
     res.status(404).json({ error: 'File non trovato o errore nel percorso', details: err.message });
@@ -57,33 +75,61 @@ router.get('/download-zip', async (req, res) => {
 
     const archive = archiver('zip', { zlib: { level: 9 } });
     const zipName = path.basename(absolutePath) || 'download';
-    
+    const userKey = cryptoService.deriveUserKey(req.user.username);
+
     res.attachment(`${zipName}.zip`);
     archive.pipe(res);
-    archive.directory(absolutePath, false);
-    
+
     archive.on('error', (err) => {
       logger.error('Errore nella creazione dello ZIP:', err);
-      res.status(500).json({ error: 'Errore interno del server durante l\'archiviazione' });
+      if (!res.headersSent) res.status(500).json({ error: 'Errore interno del server durante l\'archiviazione' });
     });
-    
+
+    // Scansione ricorsiva della cartella e aggiunta di ciascun file decifrato al volo
+    const addFolderToArchive = async (currentPath, entryPrefix = '') => {
+      const items = await fs.readdir(currentPath);
+      for (const item of items) {
+        const fullPath = path.join(currentPath, item);
+        const itemStat = await fs.stat(fullPath);
+        const entryName = entryPrefix ? `${entryPrefix}/${item}` : item;
+
+        if (itemStat.isDirectory()) {
+          await addFolderToArchive(fullPath, entryName);
+        } else {
+          const readStream = fs.createReadStream(fullPath);
+          const decryptStream = cryptoService.createDecryptStream(userKey);
+          archive.append(readStream.pipe(decryptStream), { name: entryName });
+        }
+      }
+    };
+
+    await addFolderToArchive(absolutePath);
     await archive.finalize();
   } catch (err) {
     logger.error('Errore nel download dello ZIP:', err);
-    res.status(404).json({ error: 'Cartella non trovata', details: err.message });
+    if (!res.headersSent) res.status(404).json({ error: 'Cartella non trovata', details: err.message });
   }
 });
 
-router.post('/upload', upload.array('files'), (req, res) => {
+router.post('/upload', upload.array('files'), async (req, res) => {
   try {
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ error: 'Nessun file caricato' });
     }
-    const uploaded = req.files.map(f => ({
-      name: f.filename,
-      size: f.size
-    }));
-    res.json({ message: 'File caricati con successo', files: uploaded });
+
+    const userKey = cryptoService.deriveUserKey(req.user.username);
+    const uploaded = [];
+
+    for (const f of req.files) {
+      await cryptoService.encryptFileInPlace(f.path, userKey);
+      const stat = await fs.stat(f.path);
+      uploaded.push({
+        name: f.filename,
+        size: Math.max(0, stat.size - cryptoService.HEADER_LENGTH)
+      });
+    }
+
+    res.json({ message: 'File caricati e cifrati con successo', files: uploaded });
   } catch (err) {
     logger.error('Errore durante l\'upload:', err);
     res.status(500).json({ error: 'Errore durante il caricamento' });
@@ -106,7 +152,6 @@ router.post('/mkdir', async (req, res) => {
 
 router.post('/delete', async (req, res) => {
   try {
-    // frontend sends path in body for delete
     const itemPath = req.body.path || req.query.path;
     if (!itemPath) {
       return res.status(400).json({ error: 'Percorso mancante' });

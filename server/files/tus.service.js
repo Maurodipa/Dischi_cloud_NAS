@@ -6,6 +6,8 @@ const config = require('../config.js');
 const logger = require('../utils/logger.js');
 const jwt = require('jsonwebtoken');
 
+const cryptoService = require('../crypto/crypto.service.js');
+
 // Ensure temp directory exists
 const tusTmpDir = path.join(config.primaryDisk, '.tus_tmp');
 fse.ensureDirSync(tusTmpDir);
@@ -156,6 +158,10 @@ const tusServer = new Server({
             await fse.ensureDir(targetDir);
             await fse.move(tempFilePath, targetFile, { overwrite: true });
 
+            // Cifratura SSE del file caricato
+            const userKey = cryptoService.deriveUserKey(username);
+            await cryptoService.encryptFileInPlace(targetFile, userKey);
+
             // Pulizia file .json creato da @tus/file-store
             const infoFile = tempFilePath + '.json';
             if (await fse.pathExists(infoFile)) {
@@ -218,8 +224,10 @@ const rescueStuckUploads = async () => {
                             
                             await fse.ensureDir(targetDir);
                             await fse.move(dataFile, targetFile, { overwrite: true });
+                            const userKey = cryptoService.deriveUserKey(username);
+                            await cryptoService.encryptFileInPlace(targetFile, userKey);
                             await fse.remove(infoPath);
-                            logger.info(`[TUS Rescue] File recuperato e spostato in: ${targetFile}`);
+                            logger.info(`[TUS Rescue] File recuperato, cifrato e spostato in: ${targetFile}`);
                         }
                     }
                 }

@@ -3,6 +3,8 @@ const path = require('path');
 const { primaryDisk } = require('../config.js');
 const logger = require('../utils/logger.js');
 
+const cryptoService = require('../crypto/crypto.service.js');
+
 const mimeTypes = {
   '.txt': 'text/plain',
   '.html': 'text/html',
@@ -22,6 +24,10 @@ const mimeTypes = {
 const getMimeType = (ext) => mimeTypes[ext.toLowerCase()] || 'application/octet-stream';
 
 class FilesService {
+  getMimeType(ext) {
+    return getMimeType(ext);
+  }
+
   getAbsolutePath(username, relativePath) {
     if (!username) throw new Error('Username required for file operations');
     const userRoot = path.resolve(primaryDisk, username);
@@ -48,11 +54,20 @@ class FilesService {
     for (const item of items) {
       const itemPath = path.join(targetPath, item);
       const stat = await fs.stat(itemPath);
+      let reportedSize = stat.size;
+
+      if (!stat.isDirectory()) {
+        const encrypted = await cryptoService.isEncrypted(itemPath);
+        if (encrypted) {
+          reportedSize = Math.max(0, stat.size - cryptoService.HEADER_LENGTH);
+        }
+      }
+
       results.push({
         name: item,
         path: path.posix.join(relativePath || '/', item),
         isDirectory: stat.isDirectory(),
-        size: stat.size,
+        size: reportedSize,
         modifiedAt: stat.mtime,
         mimeType: stat.isDirectory() ? null : getMimeType(path.extname(item))
       });
@@ -63,9 +78,18 @@ class FilesService {
   async getFileInfo(username, relativePath) {
     const targetPath = this.getAbsolutePath(username, relativePath);
     const stat = await fs.stat(targetPath);
+    let reportedSize = stat.size;
+
+    if (!stat.isDirectory()) {
+      const encrypted = await cryptoService.isEncrypted(targetPath);
+      if (encrypted) {
+        reportedSize = Math.max(0, stat.size - cryptoService.HEADER_LENGTH);
+      }
+    }
+
     return {
       name: path.basename(targetPath),
-      size: stat.size,
+      size: reportedSize,
       modified: stat.mtime,
       mimeType: getMimeType(path.extname(targetPath))
     };
