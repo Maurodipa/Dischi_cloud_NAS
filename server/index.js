@@ -14,7 +14,7 @@ const authRoutes = require('./auth/auth.routes.js');
 const webauthnRoutes = require('./auth/webauthn.routes.js');
 const filesRoutes = require('./files/files.routes.js');
 const { startWebDAVServer } = require('./webdav/webdav.server.js');
-const { startSync, getSyncStatus } = require('./sync/sync.service.js');
+const { startSync } = require('./sync/sync.service.js');
 const systemRoutes = require('./system/system.routes.js');
 const { initSmartMonitoring } = require('./system/smart.service.js');
 
