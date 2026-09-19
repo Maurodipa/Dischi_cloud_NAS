@@ -1,6 +1,7 @@
 -- /etc/lsyncd/lsyncd.conf.lua
--- File di configurazione lsyncd 2.2.3 per Dischi Cloud NAS
--- Sincronizzazione speculare in tempo reale da disk1 (CloudData) a disk2 (CloudBackup)
+-- Configurazione lsyncd 2.2.3 per Dischi Cloud NAS
+-- Usa default.rsync con un wrapper binario personalizzato per i webhook.
+-- Nessun layer Lua complesso: massima compatibilità e semplicità.
 
 settings {
     logfile        = "/var/log/lsyncd/lsyncd.log",
@@ -9,29 +10,15 @@ settings {
     nodaemon       = false
 }
 
--- Layer rsync personalizzato con webhook via collect()
-local rsync_with_webhook = {
-    checkgauge = default.rsync.checkgauge,
-    init       = default.rsync.init,
-    action     = default.rsync.action,
-
-    -- collect() viene chiamata da lsyncd ogni volta che un processo rsync figlio termina
-    collect = function(agent, exitcode)
-        if exitcode == 0 then
-            os.execute("/usr/local/bin/sync-webhook.sh completed 0 &")
-        elseif exitcode ~= 20 then -- exitcode 20 = shutdown ordinato di lsyncd (non un errore)
-            os.execute("/usr/local/bin/sync-webhook.sh error " .. exitcode .. " &")
-        end
-        return default.rsync.collect(agent, exitcode)
-    end
-}
-
 sync {
-    rsync_with_webhook,
+    default.rsync,
     source  = "/mnt/disk1/CloudData/",
     target  = "/mnt/disk2/CloudBackup/",
     exclude = { ".tus_tmp/", ".dischi-cloud/" },
     rsync = {
+        -- Punta al nostro wrapper invece del rsync nativo.
+        -- Il wrapper esegue il vero rsync e poi invia il webhook.
+        binary     = "/usr/local/bin/rsync-wrapper.sh",
         archive    = true,
         compress   = false,
         whole_file = false,
