@@ -1,85 +1,82 @@
 // server/sync/sync.service.js
-// Servizio di monitoraggio sincronizzazione integrato con lsyncd (demone di sistema)
+// Servizio di monitoraggio sincronizzazione integrato con lsyncd (demone di sistema).
+// Legge /var/log/lsyncd/lsyncd.status ogni 30 secondi per aggiornare la dashboard.
 
 const fse = require('fs-extra');
-const path = require('path');
 const config = require('../config.js');
 const logger = require('../utils/logger.js');
 
-const LSYNCD_LOG_FILE = '/var/log/lsyncd/lsyncd.log';
+const LSYNCD_STATUS_FILE = '/var/log/lsyncd/lsyncd.status';
+const LSYNCD_LOG_FILE    = '/var/log/lsyncd/lsyncd.log';
+const POLL_INTERVAL_MS   = 30 * 1000; // 30 secondi (uguale a statusInterval in lsyncd)
+
+let pollTimer = null;
 
 const syncStats = {
   totalSynced: 0,
   lastSyncTime: null,
   errors: 0,
   isHealthy: true,
+  pendingDelays: 0,
   mode: 'lsyncd'
 };
 
 // ─────────────────────────────────────────────
-// Gestione Webhook (chiamato da lsyncd via sync-webhook.sh)
+// Lettura del file di stato di lsyncd
 // ─────────────────────────────────────────────
 
-function handleWebhook(status, exitcode) {
-  const code = parseInt(exitcode, 10) || 0;
-
-  if (status === 'completed' && code === 0) {
-    syncStats.totalSynced++;
-    syncStats.lastSyncTime = new Date().toISOString();
-    syncStats.isHealthy = true;
-    logger.info('[Sync-lsyncd] Sincronizzazione completata con successo via webhook.');
-  } else if (status === 'error' || code !== 0) {
-    syncStats.errors++;
-    syncStats.isHealthy = false;
-    logger.error(`[Sync-lsyncd] Errore di sincronizzazione segnalato via webhook (exitcode ${code}).`);
-  }
-}
-
-// ─────────────────────────────────────────────
-// Lettura del Log di lsyncd (all'avvio e alle 04:00 AM)
-// ─────────────────────────────────────────────
-
-async function readLsyncdLog() {
+async function readLsyncdStatus() {
   try {
-    if (!await fse.pathExists(LSYNCD_LOG_FILE)) {
-      logger.warn(`[Sync-lsyncd] File log non trovato (${LSYNCD_LOG_FILE}). lsyncd potrebbe non essere attivo.`);
+    if (!await fse.pathExists(LSYNCD_STATUS_FILE)) {
+      // Il file non esiste: lsyncd potrebbe non essere ancora partito o avere avuto un errore
+      syncStats.isHealthy = false;
+      logger.warn(`[Sync-lsyncd] File di stato non trovato: ${LSYNCD_STATUS_FILE}. lsyncd potrebbe non essere attivo.`);
       return;
     }
 
-    const content = await fse.readFile(LSYNCD_LOG_FILE, 'utf8');
-    const lines = content.trim().split('\n').filter(Boolean);
-    const lastLines = lines.slice(-50); // Ultimi 50 eventi
+    const content = await fse.readFile(LSYNCD_STATUS_FILE, 'utf8');
 
-    let hasRecentError = false;
-    let lastSuccessTime = null;
+    // Estrai il timestamp del report
+    const timeMatch = content.match(/Lsyncd status report at (.+)/);
+    if (timeMatch) {
+      syncStats.lastSyncTime = new Date(timeMatch[1]).toISOString();
+    }
 
-    for (const line of lastLines) {
-      if (line.includes('Normal: Executing rsync') || line.includes('Normal: Finished rsync')) {
-        // Estrai ipotetico timestamp
-        const match = line.match(/^(\w{3} \w{3}\s+\d+\s+\d+:\d+:\d+\s+\d{4})/);
-        if (match) {
-          lastSuccessTime = new Date(match[1]).toISOString();
-        }
+    // Controlla i ritardi in coda (0 = idle e in salute, >0 = sincronizzazione in corso)
+    const delayMatch = content.match(/There are (\d+) delays?/);
+    if (delayMatch) {
+      const delays = parseInt(delayMatch[1], 10);
+      syncStats.pendingDelays = delays;
+
+      if (delays === 0) {
+        syncStats.isHealthy = true;
       }
-      if (line.includes('Error:') || line.includes('FAIL')) {
-        hasRecentError = true;
+      // Se ci sono delay, non è necessariamente un errore: rsync sta solo lavorando
+    }
+
+    // Controlla il log per errori recenti (ultime 30 righe)
+    if (await fse.pathExists(LSYNCD_LOG_FILE)) {
+      const logContent = await fse.readFile(LSYNCD_LOG_FILE, 'utf8');
+      const lastLines = logContent.trim().split('\n').slice(-30);
+      const hasRecentError = lastLines.some(l => l.includes('Error:') || l.includes('FAIL'));
+
+      if (hasRecentError) {
+        syncStats.errors++;
+        syncStats.isHealthy = false;
+        logger.warn('[Sync-lsyncd] Rilevati errori recenti nel log di lsyncd.');
       }
     }
 
-    if (lastSuccessTime) {
-      syncStats.lastSyncTime = lastSuccessTime;
+    // Incrementa il contatore di sincronizzazioni riuscite (segnale di vita)
+    if (syncStats.isHealthy) {
+      syncStats.totalSynced++;
     }
 
-    if (hasRecentError) {
-      syncStats.isHealthy = false;
-      logger.warn('[Sync-lsyncd] Sanity check: rilevati errori nel log di lsyncd.');
-    } else {
-      syncStats.isHealthy = true;
-      logger.info('[Sync-lsyncd] Sanity check: lo stato di lsyncd risulta regolare.');
-    }
+    logger.debug(`[Sync-lsyncd] Stato lsyncd: delays=${syncStats.pendingDelays}, healthy=${syncStats.isHealthy}`);
 
   } catch (err) {
-    logger.error(`[Sync-lsyncd] Impossibile leggere il log di lsyncd: ${err.message}`);
+    syncStats.isHealthy = false;
+    logger.error(`[Sync-lsyncd] Errore nella lettura del file di stato: ${err.message}`);
   }
 }
 
@@ -94,11 +91,11 @@ function scheduleDailySanityCheck() {
   if (next4am <= now) next4am.setDate(next4am.getDate() + 1);
 
   const msUntil4am = next4am - now;
-  logger.info(`[Sync-lsyncd] Prossimo sanity check del log lsyncd: ${next4am.toLocaleString('it-IT')}`);
+  logger.info(`[Sync-lsyncd] Prossimo sanity check: ${next4am.toLocaleString('it-IT')}`);
 
   setTimeout(() => {
-    readLsyncdLog();
-    setInterval(readLsyncdLog, 24 * 60 * 60 * 1000);
+    readLsyncdStatus();
+    setInterval(readLsyncdStatus, 24 * 60 * 60 * 1000);
   }, msUntil4am);
 }
 
@@ -112,23 +109,29 @@ async function startSync() {
     return;
   }
 
-  logger.info('[Sync-lsyncd] Avvio servizio di monitoraggio lsyncd...');
+  logger.info('[Sync-lsyncd] Avvio monitoraggio lsyncd (polling ogni 30s)...');
 
-  // Assicurati che le directory esistano
   await fse.ensureDir(config.primaryDisk);
   await fse.ensureDir(config.backupDisk);
 
-  // Leggi il log all'avvio per ricostruire l'ultimo stato noto
-  await readLsyncdLog();
+  // Prima lettura immediata all'avvio
+  await readLsyncdStatus();
 
-  // Pianifica il check delle 04:00 AM
+  // Polling ogni 30 secondi
+  pollTimer = setInterval(readLsyncdStatus, POLL_INTERVAL_MS);
+
+  // Sanity check profondo ogni notte alle 04:00 AM
   scheduleDailySanityCheck();
 
   logger.info('[Sync-lsyncd] Monitoraggio lsyncd attivo.');
 }
 
 function stopSync() {
-  logger.info('[Sync-lsyncd] Servizio di monitoraggio arrestato.');
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
+  logger.info('[Sync-lsyncd] Monitoraggio arrestato.');
 }
 
 function getSyncStatus() {
@@ -138,6 +141,5 @@ function getSyncStatus() {
 module.exports = {
   startSync,
   stopSync,
-  getSyncStatus,
-  handleWebhook
+  getSyncStatus
 };
