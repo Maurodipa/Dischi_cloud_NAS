@@ -138,10 +138,15 @@ router.post('/upload', upload.array('files'), async (req, res) => {
 
 router.post('/mkdir', async (req, res) => {
   try {
-    const dirPath = req.body.path;
-    if (!dirPath) {
-      return res.status(400).json({ error: 'Percorso mancante' });
+    const basePath = req.body.path || '/';
+    const folderName = (req.body.name || '').trim();
+
+    if (!folderName) {
+      return res.status(400).json({ error: 'Nome cartella mancante' });
     }
+
+    // Combina il percorso corrente con il nome della nuova cartella
+    const dirPath = path.posix.join(basePath, folderName);
     await filesService.createDirectory(req.user.username, dirPath);
     res.json({ message: 'Cartella creata con successo' });
   } catch (err) {
