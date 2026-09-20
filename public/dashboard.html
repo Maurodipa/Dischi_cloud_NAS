@@ -55,12 +55,14 @@
       </aside>
       
       <main class="file-area">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 1rem;">
           <div class="breadcrumb" id="breadcrumb" style="margin-bottom: 0;">
             <!-- Populated by JS -->
           </div>
           <input type="text" id="search-input" placeholder="Cerca file per nome..." style="max-width: 300px; padding: 0.5rem;" />
         </div>
+        <!-- Contatore elementi -->
+        <div id="file-count-display" style="font-size:0.82rem; color:var(--text-muted); margin-bottom:0.75rem;"></div>
         
         <div class="upload-zone" id="upload-zone">
           <p>Trascina qui i tuoi file per caricarli</p>
@@ -75,6 +77,7 @@
           <span id="selection-count" style="font-weight:600; color:#fff;">0 selezionati</span>
           <button id="btn-delete-selected" class="btn-outline" style="color:#fff; border-color:#fff; padding:0.3rem 0.8rem;">🗑️ Elimina</button>
           <button id="btn-download-selected" class="btn-outline" style="color:#fff; border-color:#fff; padding:0.3rem 0.8rem;">⬇️ Scarica ZIP</button>
+          <button id="btn-move-selected" class="btn-outline" style="color:#fff; border-color:#fff; padding:0.3rem 0.8rem;">✂️ Sposta</button>
           <button id="btn-clear-selection" class="btn-outline" style="color:#fff; border-color:#fff; padding:0.3rem 0.8rem; margin-left:auto;">✕ Deseleziona</button>
         </div>
 
@@ -99,6 +102,20 @@
       </main>
     </div>
   </div>
+
+  <!-- Modal Sposta -->
+  <div id="move-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-content" style="max-width:480px;">
+      <h3>✂️ Sposta in...</h3>
+      <div id="move-modal-breadcrumb" class="breadcrumb" style="margin:0.75rem 0; font-size:0.9rem;"></div>
+      <div id="move-modal-folders" style="min-height:120px; max-height:280px; overflow-y:auto; border:1px solid var(--border-color); border-radius:6px; padding:0.5rem; margin-bottom:1rem;"></div>
+      <div class="modal-actions">
+        <button class="btn-outline" id="btn-cancel-move">Annulla</button>
+        <button id="btn-confirm-move" class="btn-primary">📂 Sposta qui</button>
+      </div>
+    </div>
+  </div>
+
 
   <!-- Hidden inputs -->
   <input type="file" id="file-upload-input" multiple style="display: none;">

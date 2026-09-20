@@ -240,6 +240,34 @@ router.post('/rename', async (req, res) => {
   }
 });
 
+// Sposta uno o più elementi in un'altra cartella
+router.post('/move', async (req, res) => {
+  try {
+    const { from, toFolder } = req.body; // from = percorso sorgente, toFolder = cartella di destinazione
+    if (!from || toFolder === undefined) {
+      return res.status(400).json({ error: 'Parametri mancanti: from e toFolder richiesti' });
+    }
+    const fromAbs    = filesService.getAbsolutePath(req.user.username, from);
+    const toFolderAbs = filesService.getAbsolutePath(req.user.username, toFolder);
+    const newAbsPath = path.join(toFolderAbs, path.basename(fromAbs));
+
+    if (fromAbs === newAbsPath) {
+      return res.status(400).json({ error: 'Sorgente e destinazione coincidono' });
+    }
+    if (await fs.pathExists(newAbsPath)) {
+      return res.status(409).json({ error: 'Esiste già un elemento con questo nome nella destinazione' });
+    }
+    await fs.ensureDir(toFolderAbs);
+    await fs.move(fromAbs, newAbsPath);
+    logger.info(`Spostato: ${fromAbs} → ${newAbsPath}`);
+    res.json({ message: 'Spostato con successo' });
+  } catch (err) {
+    logger.error('Errore durante lo spostamento:', err);
+    res.status(400).json({ error: 'Impossibile spostare', details: err.message });
+  }
+});
+
+
 router.get('/disk-usage', async (req, res) => {
   try {
     const usage = await filesService.getDiskUsage(req.user.username);

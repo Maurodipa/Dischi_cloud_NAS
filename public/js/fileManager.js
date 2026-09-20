@@ -398,18 +398,125 @@ function renderFiles(files) {
         <td>${date}</td>
         <td>
           <div class="file-actions">
-            <button class="btn-icon" title="Scarica" data-action="download" data-path="${escapeHtml(fullPath)}" data-isdir="${file.isDirectory}">⬇️</button>
-            <button class="btn-icon" title="Rinomina" data-action="rename" data-path="${escapeHtml(fullPath)}">✏️</button>
-            <button class="btn-icon" title="Elimina" data-action="delete" data-path="${escapeHtml(fullPath)}" data-name="${escapeHtml(file.name)}">🗑️</button>
+            <button class="btn-icon" title="Scarica"  data-action="download" data-path="${escapeHtml(fullPath)}" data-isdir="${file.isDirectory}">⬇️</button>
+            <button class="btn-icon" title="Sposta"   data-action="move"     data-path="${escapeHtml(fullPath)}">✂️</button>
+            <button class="btn-icon" title="Rinomina" data-action="rename"   data-path="${escapeHtml(fullPath)}">✏️</button>
+            <button class="btn-icon" title="Elimina"  data-action="delete"   data-path="${escapeHtml(fullPath)}" data-name="${escapeHtml(file.name)}">🗑️</button>
           </div>
         </td>
       </tr>
     `;
   }).join('');
 
+  // Aggiorna il contatore elementi
+  const countEl = document.getElementById('file-count-display');
+  if (countEl) {
+    const total = filesToRender.length;
+    const dirs  = filesToRender.filter(f => f.isDirectory).length;
+    const fls   = total - dirs;
+    const parts = [];
+    if (dirs > 0) parts.push(`${dirs} cartel${dirs === 1 ? 'la' : 'le'}`);
+    if (fls > 0)  parts.push(`${fls} fil${fls === 1 ? 'e' : 'es'}`);
+    countEl.textContent = `${total} element${total === 1 ? 'o' : 'i'}` + (parts.length ? ` (${parts.join(', ')})` : '');
+  }
+
   // Ricalcola la barra di selezione dopo il re-render
   updateSelectionBar();
 }
+
+// ─── Move modal ───────────────────────────────────────────────────────
+
+let moveTargetPaths = [];  // path(s) da spostare
+let moveBrowsePath  = '/'; // cartella attualmente esplorata nel modal
+
+async function showMoveModal(paths) {
+  moveTargetPaths = [...paths];
+  moveBrowsePath  = '/';
+  await refreshMoveBrowser();
+  document.getElementById('move-modal').style.display = 'flex';
+}
+
+async function refreshMoveBrowser() {
+  const bcEl      = document.getElementById('move-modal-breadcrumb');
+  const foldersEl = document.getElementById('move-modal-folders');
+
+  // Breadcrumb del modal
+  const parts = moveBrowsePath.split('/').filter(p => p);
+  let bcHtml = `<span class="breadcrumb-link" data-movenav="/">🏠 Home</span>`;
+  let acc = '';
+  parts.forEach(p => {
+    acc += '/' + p;
+    bcHtml += ` / <span class="breadcrumb-link" data-movenav="${escapeHtml(acc)}">${escapeHtml(p)}</span>`;
+  });
+  bcEl.innerHTML = bcHtml;
+  bcEl.querySelectorAll('[data-movenav]').forEach(span => {
+    span.addEventListener('click', () => {
+      moveBrowsePath = span.dataset.movenav;
+      refreshMoveBrowser();
+    });
+  });
+
+  // Lista cartelle nella posizione corrente
+  foldersEl.innerHTML = '<p style="color:var(--text-muted); padding:0.5rem;">Caricamento...</p>';
+  try {
+    const res  = await apiFetch(`/api/files/list?path=${encodeURIComponent(moveBrowsePath)}`);
+    const data = res.ok ? await res.json() : { files: [] };
+    const dirs = (data.files || []).filter(f => f.isDirectory);
+
+    if (dirs.length === 0) {
+      foldersEl.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding:1rem;">Nessuna sottocartella</p>';
+    } else {
+      foldersEl.innerHTML = dirs.map(d => {
+        const fp = moveBrowsePath === '/' ? `/${d.name}` : `${moveBrowsePath}/${d.name}`;
+        return `<div class="move-folder-item" data-path="${escapeHtml(fp)}"
+                     style="padding:0.5rem 0.75rem; cursor:pointer; border-radius:5px; display:flex; align-items:center; gap:0.5rem;">
+                  📁 ${escapeHtml(d.name)}
+                </div>`;
+      }).join('');
+
+      foldersEl.querySelectorAll('.move-folder-item').forEach(el => {
+        // Hover
+        el.addEventListener('mouseenter', () => el.style.background = 'var(--hover-color, #ffffff18)');
+        el.addEventListener('mouseleave', () => el.style.background = '');
+        // Click → naviga dentro
+        el.addEventListener('click', () => {
+          moveBrowsePath = el.dataset.path;
+          refreshMoveBrowser();
+        });
+      });
+    }
+  } catch {
+    foldersEl.innerHTML = '<p style="color:#ff4444; padding:0.5rem;">Errore di rete</p>';
+  }
+}
+
+async function executeMoveToFolder() {
+  if (!moveTargetPaths.length) return;
+
+  document.getElementById('move-modal').style.display = 'none';
+
+  let errors = 0;
+  for (const fromPath of moveTargetPaths) {
+    try {
+      const res = await apiFetch('/api/files/move', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from: fromPath, toFolder: moveBrowsePath })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || 'Errore nello spostamento', 'error');
+        errors++;
+      }
+    } catch { errors++; }
+  }
+
+  clearSelection();
+  loadFiles(currentPath);
+  const label = moveTargetPaths.length === 1 ? '1 elemento' : `${moveTargetPaths.length} elementi`;
+  if (errors === 0) showToast(`${label} spostati in "${moveBrowsePath}"`, 'success');
+}
+
 
 // ─── Azioni bulk ─────────────────────────────────────────────────────
 
@@ -493,7 +600,12 @@ document.addEventListener('DOMContentLoaded', () => {
   // Selezione multipla: bottoni nella barra
   document.getElementById('btn-delete-selected')?.addEventListener('click', deleteSelected);
   document.getElementById('btn-download-selected')?.addEventListener('click', downloadSelected);
+  document.getElementById('btn-move-selected')?.addEventListener('click', () => showMoveModal([...selectedPaths]));
   document.getElementById('btn-clear-selection')?.addEventListener('click', clearSelection);
+
+  // Modal Sposta
+  document.getElementById('btn-cancel-move')?.addEventListener('click',  () => { document.getElementById('move-modal').style.display = 'none'; });
+  document.getElementById('btn-confirm-move')?.addEventListener('click', executeMoveToFolder);
 
   const tbody = document.getElementById('file-list-body');
   if (tbody) {
@@ -520,6 +632,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (btn.dataset.isdir === 'true') navigateTo(path);
       } else if (action === 'download') {
         downloadItem(path, btn.dataset.isdir === 'true');
+      } else if (action === 'move') {
+        showMoveModal([path]);
       } else if (action === 'rename') {
         renameItem(path);
       } else if (action === 'delete') {
