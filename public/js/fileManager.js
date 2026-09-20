@@ -278,15 +278,21 @@ function renderBreadcrumb(path) {
   const breadcrumbEl = document.getElementById('breadcrumb');
   const parts = path.split('/').filter(p => p);
   
-  let html = `<span onclick="navigateTo('/')">Home</span>`;
+  let html = `<span class="breadcrumb-link" data-nav="/">Home</span>`;
   let currentAccumulated = '';
   
   parts.forEach(part => {
     currentAccumulated += `/${part}`;
-    html += ` / <span onclick="navigateTo('${currentAccumulated}')">${escapeHtml(part)}</span>`;
+    html += ` / <span class="breadcrumb-link" data-nav="${escapeHtml(currentAccumulated)}">${escapeHtml(part)}</span>`;
   });
   
   breadcrumbEl.innerHTML = html;
+  
+  // Aggiunge listener DOPO aver impostato innerHTML (gli onclick inline via innerHTML
+  // vengono ignorati dai browser moderni e da qualsiasi Content Security Policy)
+  breadcrumbEl.querySelectorAll('.breadcrumb-link').forEach(span => {
+    span.addEventListener('click', () => navigateTo(span.dataset.nav));
+  });
 }
 
 function navigateTo(path) {
