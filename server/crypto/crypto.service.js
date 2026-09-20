@@ -30,22 +30,25 @@ function deriveUserKey(username) {
 
 /**
  * Controlla se un file su disco è già cifrato leggendo i primi 16 byte.
+ * Usa fs.promises.open (FileHandle) per compatibilità garantita su Node.js 14+.
  */
 async function isEncrypted(filePath) {
+  let fileHandle = null;
   try {
-    if (!await fse.pathExists(filePath)) return false;
     const stat = await fse.stat(filePath);
     if (stat.size < HEADER_LENGTH) return false;
 
-    const fd = await fse.open(filePath, 'r');
+    fileHandle = await fs.promises.open(filePath, 'r');
     const buffer = Buffer.alloc(MAGIC_LENGTH);
-    await fse.read(fd, buffer, 0, MAGIC_LENGTH, 0);
-    await fse.close(fd);
-
+    await fileHandle.read(buffer, 0, MAGIC_LENGTH, 0);
     return buffer.equals(MAGIC_HEADER);
   } catch (err) {
     logger.error(`[Crypto] Errore verifica isEncrypted su ${filePath}: ${err.message}`);
     return false;
+  } finally {
+    if (fileHandle) {
+      try { await fileHandle.close(); } catch (_) {}
+    }
   }
 }
 
