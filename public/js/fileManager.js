@@ -414,15 +414,41 @@ document.addEventListener('DOMContentLoaded', () => {
 
 const uploadQueue = [];
 let isUploading = false;
+let uploadBatchTotal = 0;     // Totale file nell'ondata corrente
+let uploadBatchCompleted = 0; // File già completati (ok o errore)
+
+function updateUploadTitle() {
+  const titleEl = document.getElementById('upload-manager-title');
+  if (!titleEl) return;
+
+  if (uploadBatchTotal === 0) {
+    titleEl.textContent = 'Caricamento in corso...';
+    return;
+  }
+
+  if (!isUploading && uploadQueue.length === 0) {
+    titleEl.textContent = `✅ Completati ${uploadBatchCompleted} file su ${uploadBatchTotal}`;
+    return;
+  }
+
+  const inProgress = uploadBatchCompleted + 1; // Il file attualmente in upload
+  const remaining  = uploadBatchTotal - uploadBatchCompleted - 1; // Quelli ancora in coda
+  titleEl.textContent = `File ${inProgress} di ${uploadBatchTotal}${remaining > 0 ? ` · ${remaining} in coda` : ''}`;
+}
 
 function uploadFiles(fileList, targetPath) {
   const manager = document.getElementById('upload-manager');
   const body = document.getElementById('upload-manager-body');
   
-  // Se stiamo iniziando una nuova ondata di caricamenti, svuotiamo la lista precedente
+  // Se stiamo iniziando una nuova ondata di caricamenti, svuotiamo la lista e resettiamo i contatori
   if (!isUploading && uploadQueue.length === 0) {
     body.innerHTML = '';
+    uploadBatchTotal = 0;
+    uploadBatchCompleted = 0;
   }
+  
+  // Aggiunge i nuovi file al totale dell'ondata corrente
+  uploadBatchTotal += fileList.length;
   
   manager.style.display = 'flex';
   
@@ -457,18 +483,16 @@ function uploadFiles(fileList, targetPath) {
 }
 
 async function processUploadQueue() {
-  const titleEl = document.getElementById('upload-manager-title');
-
   if (uploadQueue.length === 0) {
     isUploading = false;
-    if (titleEl) titleEl.textContent = 'Caricamenti Completati';
+    updateUploadTitle(); // "✅ Completati N file su TOTAL"
     return;
   }
   
   if (isUploading) return;
   isUploading = true;
   
-  if (titleEl) titleEl.textContent = 'Caricamento in corso...';
+  updateUploadTitle(); // "File X di Y · Z in coda"
   
   const currentUpload = uploadQueue.shift();
   const { file, targetPath, itemId, name } = currentUpload;
@@ -498,6 +522,7 @@ async function processUploadQueue() {
       statusEl.style.color = '#ff4444';
     }
     if (progressEl) progressEl.style.background = '#ff4444';
+    uploadBatchCompleted++;
     isUploading = false;
     return processUploadQueue();
   }
@@ -561,8 +586,7 @@ async function processUploadQueue() {
       }
       if (progressEl) progressEl.style.background = '#ff4444';
       
-      if (titleEl) titleEl.textContent = 'Caricamenti Interrotti';
-      
+      uploadBatchCompleted++;
       isUploading = false;
       processUploadQueue();
     },
@@ -575,7 +599,7 @@ async function processUploadQueue() {
     },
     onSuccess: function() {
       if (statusEl) {
-        statusEl.textContent = 'Completato';
+        statusEl.textContent = 'Completato ✅';
         statusEl.style.color = '#4caf50';
       }
       if (progressEl) {
@@ -588,6 +612,7 @@ async function processUploadQueue() {
         loadFiles(currentPath);
       }
       
+      uploadBatchCompleted++;
       isUploading = false;
       processUploadQueue();
     }
