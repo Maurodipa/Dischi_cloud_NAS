@@ -70,9 +70,18 @@
           <div class="progress-bar" id="progress-bar"></div>
         </div>
         
+        <!-- Barra azioni selezione multipla (visibile solo quando ci sono file selezionati) -->
+        <div id="selection-bar" style="display:none; align-items:center; gap:1rem; padding:0.6rem 1rem; margin-bottom:0.75rem; background:var(--accent-color); border-radius:8px; flex-wrap:wrap;">
+          <span id="selection-count" style="font-weight:600; color:#fff;">0 selezionati</span>
+          <button id="btn-delete-selected" class="btn-outline" style="color:#fff; border-color:#fff; padding:0.3rem 0.8rem;">🗑️ Elimina</button>
+          <button id="btn-download-selected" class="btn-outline" style="color:#fff; border-color:#fff; padding:0.3rem 0.8rem;">⬇️ Scarica ZIP</button>
+          <button id="btn-clear-selection" class="btn-outline" style="color:#fff; border-color:#fff; padding:0.3rem 0.8rem; margin-left:auto;">✕ Deseleziona</button>
+        </div>
+
         <table class="file-list">
           <thead>
             <tr>
+              <th style="width:2rem; text-align:center;"><input type="checkbox" id="select-all-cb" title="Seleziona tutto"></th>
               <th data-sort="name" style="cursor: pointer;">Nome <span class="sort-icon"></span></th>
               <th data-sort="size" style="cursor: pointer;">Dimensione <span class="sort-icon"></span></th>
               <th data-sort="date" style="cursor: pointer;">Modificato <span class="sort-icon"></span></th>

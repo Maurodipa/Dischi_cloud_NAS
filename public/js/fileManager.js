@@ -296,7 +296,40 @@ function renderBreadcrumb(path) {
 }
 
 function navigateTo(path) {
+  clearSelection();
   loadFiles(path);
+}
+
+// ─── Selezione multipla ───────────────────────────────────────────────
+const selectedPaths = new Set();
+
+function updateSelectionBar() {
+  const bar      = document.getElementById('selection-bar');
+  const countEl  = document.getElementById('selection-count');
+  const selectAllCb = document.getElementById('select-all-cb');
+  const n = selectedPaths.size;
+
+  if (n === 0) {
+    bar.style.display = 'none';
+  } else {
+    bar.style.display = 'flex';
+    countEl.textContent = n === 1 ? '1 elemento selezionato' : `${n} elementi selezionati`;
+  }
+
+  // Aggiorna stato della checkbox "seleziona tutto"
+  if (selectAllCb) {
+    const allCbs = document.querySelectorAll('.file-select-cb');
+    selectAllCb.checked = allCbs.length > 0 && [...allCbs].every(cb => cb.checked);
+    selectAllCb.indeterminate = n > 0 && !selectAllCb.checked;
+  }
+}
+
+function clearSelection() {
+  selectedPaths.clear();
+  document.querySelectorAll('.file-select-cb').forEach(cb => { cb.checked = false; });
+  const selectAllCb = document.getElementById('select-all-cb');
+  if (selectAllCb) { selectAllCb.checked = false; selectAllCb.indeterminate = false; }
+  updateSelectionBar();
 }
 
 function renderFiles(files) {
@@ -307,7 +340,6 @@ function renderFiles(files) {
   
   if (searchQuery) {
     filesToRender = filesToRender.filter(f => {
-      // Support advanced size queries like ">10mb" or "<5kb"
       const sizeMatch = searchQuery.match(/^([<>])\s*(\d+(?:\.\d+)?)\s*(kb|mb|gb|tb)$/i);
       if (sizeMatch) {
         const op = sizeMatch[1];
@@ -318,12 +350,9 @@ function renderFiles(files) {
         if (unit === 'mb') bytes *= 1024 * 1024;
         if (unit === 'gb') bytes *= 1024 * 1024 * 1024;
         if (unit === 'tb') bytes *= 1024 * 1024 * 1024 * 1024;
-        
         if (op === '>') return (f.size || 0) > bytes;
         if (op === '<') return (f.size || 0) < bytes;
       }
-      
-      // Default: name search
       return f.name.toLowerCase().includes(searchQuery);
     });
   }
@@ -331,6 +360,7 @@ function renderFiles(files) {
   if (filesToRender.length === 0) {
     tbody.innerHTML = '';
     emptyState.style.display = 'block';
+    updateSelectionBar();
     return;
   }
   
@@ -339,27 +369,25 @@ function renderFiles(files) {
   filesToRender.sort((a, b) => {
     if (a.isDirectory && !b.isDirectory) return -1;
     if (!a.isDirectory && b.isDirectory) return 1;
-    
     let res = 0;
-    if (currentSortBy === 'name') {
-      res = a.name.localeCompare(b.name);
-    } else if (currentSortBy === 'size') {
-      res = (a.size || 0) - (b.size || 0);
-    } else if (currentSortBy === 'date') {
-      res = new Date(a.modifiedAt) - new Date(b.modifiedAt);
-    }
-    
+    if (currentSortBy === 'name')       res = a.name.localeCompare(b.name);
+    else if (currentSortBy === 'size')  res = (a.size || 0) - (b.size || 0);
+    else if (currentSortBy === 'date')  res = new Date(a.modifiedAt) - new Date(b.modifiedAt);
     return currentSortOrder === 'asc' ? res : -res;
   });
   
   tbody.innerHTML = filesToRender.map(file => {
-    const icon = getFileIcon(file.name, file.isDirectory);
-    const size = file.isDirectory ? '-' : formatFileSize(file.size);
-    const date = formatDate(file.modifiedAt);
+    const icon     = getFileIcon(file.name, file.isDirectory);
+    const size     = file.isDirectory ? '-' : formatFileSize(file.size);
+    const date     = formatDate(file.modifiedAt);
     const fullPath = currentPath === '/' ? `/${file.name}` : `${currentPath}/${file.name}`;
-    
+    const checked  = selectedPaths.has(fullPath) ? 'checked' : '';
+
     return `
       <tr>
+        <td style="text-align:center;">
+          <input type="checkbox" class="file-select-cb" data-path="${escapeHtml(fullPath)}" ${checked}>
+        </td>
         <td>
           <div class="file-item-name" style="cursor: pointer;" data-action="navigate" data-path="${escapeHtml(fullPath)}" data-isdir="${file.isDirectory}">
             <span>${icon}</span>
@@ -378,29 +406,118 @@ function renderFiles(files) {
       </tr>
     `;
   }).join('');
+
+  // Ricalcola la barra di selezione dopo il re-render
+  updateSelectionBar();
 }
 
-// Add event delegation for file actions
+// ─── Azioni bulk ─────────────────────────────────────────────────────
+
+async function deleteSelected() {
+  const paths = [...selectedPaths];
+  if (paths.length === 0) return;
+  const label = paths.length === 1 ? '1 elemento' : `${paths.length} elementi`;
+  if (!confirm(`Eliminare definitivamente ${label}?\nQuesta azione non può essere annullata.`)) return;
+
+  let errors = 0;
+  for (const p of paths) {
+    try {
+      const res = await apiFetch('/api/files/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: p })
+      });
+      if (!res.ok) errors++;
+    } catch { errors++; }
+  }
+
+  clearSelection();
+  loadFiles(currentPath);
+  if (errors === 0) {
+    showToast(`${label} eliminati con successo`, 'success');
+  } else {
+    showToast(`Completato con ${errors} errori`, 'error');
+  }
+}
+
+async function downloadSelected() {
+  const paths = [...selectedPaths];
+  if (paths.length === 0) return;
+
+  // Se è un solo elemento e non è una cartella → download diretto
+  if (paths.length === 1) {
+    const isDir = document.querySelector(`.file-select-cb[data-path="${CSS.escape(paths[0])}"]`)?.closest('tr')
+      ?.querySelector('[data-action="download"]')?.dataset?.isdir === 'true';
+    return downloadItem(paths[0], !!isDir);
+  }
+
+  // Multipli → richiedi uno ZIP al server con i path selezionati
+  showToast('Preparazione ZIP...', 'info');
+  try {
+    const res = await apiFetch('/api/files/download-zip-selection', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ paths })
+    });
+    if (!res.ok) { showToast('Errore nella preparazione dello ZIP', 'error'); return; }
+
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = 'selezione.zip';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch { showToast('Errore di rete', 'error'); }
+}
+
+// ─── Event delegation per file actions e checkbox ────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+  // Selezione multipla: checkbox "seleziona tutto"
+  const selectAllCb = document.getElementById('select-all-cb');
+  if (selectAllCb) {
+    selectAllCb.addEventListener('change', () => {
+      const allCbs = document.querySelectorAll('.file-select-cb');
+      allCbs.forEach(cb => {
+        cb.checked = selectAllCb.checked;
+        const p = cb.dataset.path;
+        if (selectAllCb.checked) selectedPaths.add(p);
+        else selectedPaths.delete(p);
+      });
+      updateSelectionBar();
+    });
+  }
+
+  // Selezione multipla: bottoni nella barra
+  document.getElementById('btn-delete-selected')?.addEventListener('click', deleteSelected);
+  document.getElementById('btn-download-selected')?.addEventListener('click', downloadSelected);
+  document.getElementById('btn-clear-selection')?.addEventListener('click', clearSelection);
+
   const tbody = document.getElementById('file-list-body');
   if (tbody) {
     tbody.addEventListener('click', (e) => {
+      // Checkbox singola riga
+      const cb = e.target.closest('.file-select-cb');
+      if (cb) {
+        const p = cb.dataset.path;
+        if (cb.checked) selectedPaths.add(p);
+        else selectedPaths.delete(p);
+        updateSelectionBar();
+        return;
+      }
+
       const btn = e.target.closest('[data-action]');
       if (!btn) return;
-      
       const action = btn.dataset.action;
-      const path = btn.dataset.path;
-      
-      // Close sidebar on mobile if open
-      const sidebar = document.querySelector('.sidebar');
-      if (sidebar && sidebar.classList.contains('open')) {
-        sidebar.classList.remove('open');
-      }
-      
+      const path   = btn.dataset.path;
+
+      // Chiudi sidebar su mobile
+      document.querySelector('.sidebar')?.classList.remove('open');
+
       if (action === 'navigate') {
-        if (btn.dataset.isdir === 'true') {
-          navigateTo(path);
-        }
+        if (btn.dataset.isdir === 'true') navigateTo(path);
       } else if (action === 'download') {
         downloadItem(path, btn.dataset.isdir === 'true');
       } else if (action === 'rename') {

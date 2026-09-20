@@ -111,6 +111,63 @@ router.get('/download-zip', async (req, res) => {
   }
 });
 
+// Scarica una selezione arbitraria di file/cartelle come ZIP
+router.post('/download-zip-selection', async (req, res) => {
+  try {
+    const { paths: relativePaths } = req.body;
+    if (!Array.isArray(relativePaths) || relativePaths.length === 0) {
+      return res.status(400).json({ error: 'Nessun elemento selezionato' });
+    }
+
+    const userKey = cryptoService.deriveUserKey(req.user.username);
+    const archive = archiver('zip', { zlib: { level: 6 } });
+
+    res.attachment('selezione.zip');
+    archive.pipe(res);
+
+    archive.on('error', (err) => {
+      logger.error('Errore nella creazione dello ZIP selezione:', err);
+      if (!res.headersSent) res.status(500).end();
+    });
+
+    const addFileToArchive = async (absPath, entryName) => {
+      const readStream = fs.createReadStream(absPath);
+      const decryptStream = cryptoService.createDecryptStream(userKey);
+      archive.append(readStream.pipe(decryptStream), { name: entryName });
+    };
+
+    const addFolderToArchive = async (absPath, prefix) => {
+      const items = await fs.readdir(absPath);
+      for (const item of items) {
+        const fullPath = path.join(absPath, item);
+        const stat = await fs.stat(fullPath);
+        const entryName = prefix ? `${prefix}/${item}` : item;
+        if (stat.isDirectory()) {
+          await addFolderToArchive(fullPath, entryName);
+        } else {
+          await addFileToArchive(fullPath, entryName);
+        }
+      }
+    };
+
+    for (const rel of relativePaths) {
+      const absPath = filesService.getAbsolutePath(req.user.username, rel);
+      const stat = await fs.stat(absPath);
+      const entryName = path.basename(absPath);
+      if (stat.isDirectory()) {
+        await addFolderToArchive(absPath, entryName);
+      } else {
+        await addFileToArchive(absPath, entryName);
+      }
+    }
+
+    await archive.finalize();
+  } catch (err) {
+    logger.error('Errore nel download della selezione ZIP:', err);
+    if (!res.headersSent) res.status(500).json({ error: 'Errore durante la preparazione dello ZIP', details: err.message });
+  }
+});
+
 router.post('/upload', upload.array('files'), async (req, res) => {
   try {
     if (!req.files || req.files.length === 0) {
