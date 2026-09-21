@@ -433,7 +433,7 @@ async function showMoveModal(paths) {
   moveTargetPaths = [...paths];
   moveBrowsePath  = '/';
   await refreshMoveBrowser();
-  document.getElementById('move-modal').style.display = 'flex';
+  document.getElementById('move-modal').classList.add('active');
 }
 
 async function refreshMoveBrowser() {
@@ -493,7 +493,7 @@ async function refreshMoveBrowser() {
 async function executeMoveToFolder() {
   if (!moveTargetPaths.length) return;
 
-  document.getElementById('move-modal').style.display = 'none';
+  document.getElementById('move-modal').classList.remove('active');
 
   let errors = 0;
   for (const fromPath of moveTargetPaths) {
@@ -604,7 +604,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-clear-selection')?.addEventListener('click', clearSelection);
 
   // Modal Sposta
-  document.getElementById('btn-cancel-move')?.addEventListener('click',  () => { document.getElementById('move-modal').style.display = 'none'; });
+  document.getElementById('btn-cancel-move')?.addEventListener('click',  () => { document.getElementById('move-modal').classList.remove('active'); });
   document.getElementById('btn-confirm-move')?.addEventListener('click', executeMoveToFolder);
 
   const tbody = document.getElementById('file-list-body');
