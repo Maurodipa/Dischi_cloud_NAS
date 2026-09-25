@@ -147,3 +147,20 @@ Questa guida raccoglie i comandi SSH più utili per la gestione, la manutenzione
   sudo systemctl restart lsyncd
   ```
   *Forza un riavvio del demone di sincronizzazione.*
+
+---
+
+## 6. Spegnimento e Riavvio del Sistema
+
+- **Spegnere in modo sicuro il Raspberry Pi:**
+  ```bash
+  sudo shutdown -h now
+  ```
+  *(oppure `sudo poweroff`)*
+  *ATTENZIONE: Aspetta 10-15 secondi che il LED verde sul Raspberry Pi smetta di lampeggiare e rimanga acceso solo il LED rosso prima di staccare il cavo di alimentazione. Questo evita la corruzione dei dati.*
+
+- **Riavviare il Raspberry Pi:**
+  ```bash
+  sudo reboot
+  ```
+  *Esegue un riavvio pulito del sistema.*
