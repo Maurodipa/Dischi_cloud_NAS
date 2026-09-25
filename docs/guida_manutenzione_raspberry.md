@@ -6,26 +6,28 @@ Questa guida raccoglie i comandi SSH più utili per la gestione, la manutenzione
 
 ## 1. Monitoraggio Hardware e Risorse di Sistema
 
+### Temperatura e CPU
 - **Misurare la temperatura attuale della CPU:**
   ```bash
   vcgencmd measure_temp
   ```
   *Mostra la temperatura istantanea del chip del Raspberry (ideale mantenerla sotto i 60-65°C).*
 
-- **Verificare problemi di alimentazione (Under-voltage) e surriscaldamento (Throttling):**
-  ```bash
-  vcgencmd get_throttled
-  ```
-  *È il comando diagnostico più importante. Significati:*
-  * `0x0`: Tutto perfetto.
-  * `0x50000` / `0x50005`: **Under-voltage (Alimentazione insufficiente)** in passato o attuale. L'alimentatore non fornisce abbastanza corrente, grave rischio per i dischi.
-  * `0x?0002` / `0x?0008`: Surriscaldamento.
-
+### Voltaggio e Alimentazione
 - **Misurare il voltaggio attuale fornito al core:**
   ```bash
   vcgencmd measure_volts core
   ```
   *Mostra il voltaggio istantaneo del processore (di base attorno a 1.2V).*
+
+- **Verificare problemi di alimentazione (Under-voltage) e surriscaldamento (Throttling):**
+  ```bash
+  vcgencmd get_throttled
+  ```
+  *È il comando diagnostico più importante a livello hardware. Significati:*
+  * `0x0`: Tutto perfetto.
+  * `0x50000` / `0x50005`: **Under-voltage (Alimentazione insufficiente)** in passato o attuale. L'alimentatore non fornisce abbastanza corrente, grave rischio per i dischi.
+  * `0x?0002` / `0x?0008`: Surriscaldamento.
 
 - **Cercare avvisi di calo di tensione nei log del Kernel:**
   ```bash
@@ -39,6 +41,7 @@ Questa guida raccoglie i comandi SSH più utili per la gestione, la manutenzione
   ```
   *Permette di vedere se ci sono stati cali di tensione nei giorni passati o in sessioni precedenti.*
 
+### RAM e Spazio Disco
 - **Vedere la memoria RAM utilizzata e disponibile:**
   ```bash
   free -h
