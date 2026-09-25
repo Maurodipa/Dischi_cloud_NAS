@@ -12,11 +12,20 @@ Questa guida raccoglie i comandi SSH più utili per la gestione, la manutenzione
   ```
   *Mostra la temperatura istantanea del chip del Raspberry (ideale mantenerla sotto i 60-65°C).*
 
-- **Verificare se la CPU ha subito rallentamenti per surriscaldamento (Thermal Throttling):**
+- **Verificare problemi di alimentazione (Under-voltage) e surriscaldamento (Throttling):**
   ```bash
   vcgencmd get_throttled
   ```
-  *Se restituisce `0x0`, il Raspberry funziona alla massima potenza senza problemi termici o di alimentazione.*
+  *È il comando diagnostico più importante. Significati:*
+  * `0x0`: Tutto perfetto.
+  * `0x50000` / `0x50005`: **Under-voltage (Alimentazione insufficiente)** in passato o attuale. L'alimentatore non fornisce abbastanza corrente, grave rischio per i dischi.
+  * `0x?0002` / `0x?0008`: Surriscaldamento.
+
+- **Misurare il voltaggio attuale fornito al core:**
+  ```bash
+  vcgencmd measure_volts core
+  ```
+  *Mostra il voltaggio istantaneo del processore (di base attorno a 1.2V).*
 
 - **Vedere la memoria RAM utilizzata e disponibile:**
   ```bash
