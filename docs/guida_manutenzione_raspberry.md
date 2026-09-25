@@ -27,6 +27,18 @@ Questa guida raccoglie i comandi SSH più utili per la gestione, la manutenzione
   ```
   *Mostra il voltaggio istantaneo del processore (di base attorno a 1.2V).*
 
+- **Cercare avvisi di calo di tensione nei log del Kernel:**
+  ```bash
+  sudo dmesg | grep -i undervoltage
+  ```
+  *Se restituisce `Undervoltage detected!` seguito da `Voltage normalised`, l'alimentatore ha avuto un calo di potenza. Se succede solo nei primi 15-20 secondi di avvio è dovuto al picco di assorbimento dei dischi meccanici che si accendono (spin-up). Se succede durante l'uso normale, l'alimentatore va sostituito.*
+
+- **Cercare avvisi di calo di tensione nello storico di sistema:**
+  ```bash
+  sudo journalctl -k | grep -i "undervoltage"
+  ```
+  *Permette di vedere se ci sono stati cali di tensione nei giorni passati o in sessioni precedenti.*
+
 - **Vedere la memoria RAM utilizzata e disponibile:**
   ```bash
   free -h
