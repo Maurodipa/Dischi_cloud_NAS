@@ -13,6 +13,18 @@ Questa guida raccoglie i comandi SSH più utili per la gestione, la manutenzione
   ```
   *Mostra la temperatura istantanea del chip del Raspberry (ideale mantenerla sotto i 60-65°C).*
 
+- **Monitorare la temperatura in tempo reale (Cruscotto):**
+  ```bash
+  watch -n 1 vcgencmd measure_temp
+  ```
+  *Aggiorna il valore ogni secondo nello stesso punto dello schermo. Premi `Ctrl + C` per uscire.*
+
+- **Monitorare la temperatura in tempo reale (Scorrimento continuo):**
+  ```bash
+  while true; do vcgencmd measure_temp; sleep 1; done
+  ```
+  *Stampa una nuova lettura ogni secondo formando uno storico continuo. Premi `Ctrl + C` per uscire.*
+
 ### Voltaggio e Alimentazione
 - **Misurare il voltaggio attuale fornito al core:**
   ```bash
